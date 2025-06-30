@@ -1,4 +1,4 @@
--e ./data_consolidation
+-e ./genetic_causality_predicted
 joblib==1.5.1
 numpy==2.3.1
 nvidia-nccl-cu12==2.27.5
