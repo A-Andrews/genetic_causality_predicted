@@ -81,17 +81,18 @@ def load_data(chromosome):
     merged_data = merge_ld_bim(ld_annotations, bim_file)
 
     traitgym_data = load_traitgym_data(
-        os.path.join(TRAITGYM_PATH, "mendelian_traits_all", f"test.parquet"),
+        os.path.join(TRAITGYM_PATH, "complex_traits_all", f"test.parquet"),
         split="test",
     )
     merged_traitgym_data = merge_varient_features(traitgym_data, merged_data)
     convert_columns = {
         "chrom": int,
-        "ref": str,
-        "alt": str,
-        "OMIM": str,
-        "consequence": str,
-        "SNP": str,
+        "ref": "category",
+        "alt": "category",
+        "OMIM": "category",
+        "consequence": "category",
+        "SNP": "category",
+        "trait": "category",
     }
     for col, dtype in convert_columns.items():
         if col in merged_traitgym_data.columns:
