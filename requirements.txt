@@ -1,4 +1,4 @@
--e git+https://github.com/A-Andrews/genetic_causality_predicted.git@524eba9e1ee5a9ee64ae91ecf26730e5afcc3081#egg=genetic_causality_predicted
+-e ./data_consolidation
 joblib==1.5.1
 numpy==2.3.1
 nvidia-nccl-cu12==2.27.5
