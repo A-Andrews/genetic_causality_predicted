@@ -1,27 +1,35 @@
-import data_consolidation.data_loading as data_loading
+import logging
+
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score
+from sklearn.model_selection import train_test_split
 
-# Load LD annotations
-ld_annotations = data_loading.load_baselineLD_annotations("data/baselineLD_annotations.tsv.gz")
-# Load BIM file
-bim_file = data_loading.load_bim_file("data/variants.bim")
-# Merge LD and BIM data
-merged_data = data_loading.merge_ld_bim(ld_annotations, bim_file)
-# Load TraitGym dataset
-traitgym_data = data_loading.load_traitgym_data("data/traitgym_dataset.parquet", split="test")
-# Merge TraitGym data with LD annotations
-merged_traitgym_data = data_loading.merge_varient_features(traitgym_data, merged_data)
+import data_consolidation.data_loading as data_loading
+from settings import BASELINELD_PATH, PLINK_PATH, TRAITGYM_PATH
+from utils import setup_logger
 
-X = merged_traitgym_data.drop(columns=['label'])  # Features
-y = merged_traitgym_data['label']  # Target variable
+setup_logger(seed=42)  # Initialize logger with a seed for reproducibility
+
+data = data_loading.load_data(chromosome=11)  # Load data for chromosome 1
+
+logging.info("Data loaded successfully.")
+logging.info(f"Data shape: {data.shape}")
+logging.info(f"Columns: {data.columns.tolist()}")
+logging.info(f"Column types:\n{data.dtypes}")
+logging.info(
+    f"Object columns:\n{data.select_dtypes(include='object').columns.tolist()}"
+)
+
+X = data.drop(columns=["label"])  # Features
+y = data["label"]  # Target variable
 
 # Split data
-X_train, X_val, y_train, y_val = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, stratify=y, test_size=0.2, random_state=42
+)
 
 # Train XGBoost model
-model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss")
+model = xgb.XGBClassifier(use_label_encoder=False, eval_metric="logloss", enable_categorical=True)
 model.fit(X_train, y_train)
 
 # Predict
