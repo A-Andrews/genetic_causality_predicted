@@ -3,65 +3,16 @@ import logging
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from sklearn.metrics import (
-    accuracy_score,
-    average_precision_score,
-    f1_score,
-    roc_auc_score,
+from model_utils import (
+    compute_feature_importance,
+    compute_permutation_importance,
+    evaluate,
+    oversample_minority,
 )
-from sklearn.utils import resample
 
 import data_consolidation.data_loading as data_loading
 from settings import BASELINELD_PATH, PLINK_PATH, TRAITGYM_PATH
 from utils import setup_logger
-
-
-def evaluate(y_true: pd.Series, y_pred: np.ndarray) -> dict:
-    """Compute common binary classification metrics."""
-    metrics = {}
-    if len(np.unique(y_true)) < 2:
-        logging.warning("Only one class present in y_true; metrics may be meaningless")
-        ap = 1.0
-        roc = 1.0
-        acc = 1.0
-        f1 = 1.0
-    else:
-        ap = average_precision_score(y_true, y_pred)
-        roc = roc_auc_score(y_true, y_pred)
-        preds_binary = (y_pred >= 0.5).astype(int)
-        acc = accuracy_score(y_true, preds_binary)
-        f1 = f1_score(y_true, preds_binary)
-
-    metrics["auprc"] = ap
-    metrics["roc_auc"] = roc
-    metrics["accuracy"] = acc
-    metrics["f1"] = f1
-    return metrics
-
-
-def oversample_minority(X, y):
-    """Randomly oversample the minority class."""
-    df = X.copy()
-    df["label"] = y
-    counts = df["label"].value_counts()
-    if len(counts) < 2:
-        return X, y
-    minority = counts.idxmin()
-    majority = counts.idxmax()
-    if counts[minority] == counts[majority]:
-        return X, y
-
-    minority_df = df[df["label"] == minority]
-    majority_df = df[df["label"] == majority]
-    minority_upsampled = resample(
-        minority_df,
-        replace=True,
-        n_samples=len(majority_df),
-        random_state=42,
-    )
-    df_upsampled = pd.concat([majority_df, minority_upsampled])
-    return df_upsampled.drop(columns=["label"]), df_upsampled["label"]
-
 
 setup_logger(seed=42)  # Initialize logger with a seed for reproducibility
 
@@ -132,4 +83,28 @@ for chrom in chromosomes:
 
 logging.info(
     f"Mean chromosome CV AUPRC: {np.mean(cv_scores):.3f} +/- {np.std(cv_scores):.3f}"
+)
+
+pos_total = np.sum(y == True)
+neg_total = np.sum(y == False)
+spw_total = (neg_total / pos_total) if pos_total > 0 else 1.0
+
+final_model = xgb.XGBClassifier(
+    eval_metric="logloss",
+    enable_categorical=True,
+    base_score=0.5,
+    n_estimators=100,
+    scale_pos_weight=spw_total,
+    random_state=42,
+)
+final_model.fit(X, y)
+
+feature_imp = compute_feature_importance(final_model, X.columns)
+logging.info(
+    "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
+)
+
+perm_imp = compute_permutation_importance(final_model, X, y)
+logging.info(
+    "Top 10 features by permutation importance:\n%s", perm_imp.head(10).to_string()
 )
