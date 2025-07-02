@@ -13,10 +13,6 @@ def load_baselineLD_annotations(file_path):
     Returns:
     """
     df = pd.read_csv(file_path, sep="\t", compression="gzip")
-    logging.info(f"Loaded {len(df)} rows from {file_path}")
-    logging.info(f"Columns in the dataframe: {df.columns.tolist()}")
-    logging.info(f"Dataframe head:\n{df.head()}")
-    logging.info(f"Data types:\n{df.dtypes}")
     return df
 
 
@@ -46,10 +42,6 @@ def load_traitgym_data(file_path, split):
     Returns:
     """
     df = pd.read_parquet(file_path)
-    logging.info(f"Loaded {len(df)} rows from {file_path}")
-    logging.info(f"Columns in the dataframe: {df.columns.tolist()}")
-    logging.info(f"Dataframe head:\n{df.head()}")
-    logging.info(f"Data types:\n{df.dtypes}")
     return df
 
 
@@ -97,11 +89,11 @@ def load_data(chromosome):
     for col, dtype in convert_columns.items():
         if col in merged_traitgym_data.columns:
             merged_traitgym_data[col] = merged_traitgym_data[col].astype(dtype)
-        else:
-            logging.warning(f"Column {col} not found in merged_traitgym_data")
-    logging.info(
-        f"Object columns:\n{merged_traitgym_data.select_dtypes(include='object').columns.tolist()}"
-    )
+
+    if len(merged_traitgym_data.select_dtypes(include="object").columns.tolist()) > 0:
+        logging.warning(
+            f"Object columns found in merged_traitgym_data: {merged_traitgym_data.select_dtypes(include='object').columns.tolist()}"
+        )
 
     return merged_traitgym_data
 
