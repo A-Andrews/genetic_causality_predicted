@@ -1,4 +1,5 @@
 import logging
+import argparse
 
 import numpy as np
 import pandas as pd
@@ -42,6 +43,7 @@ leaky_cols = [
     "genetic_dist",
     "variant_id",
     "label",
+    "pip",
 ]
 X = X.drop(columns=[col for col in leaky_cols if col in X.columns])
 
@@ -108,3 +110,8 @@ perm_imp = compute_permutation_importance(final_model, X, y)
 logging.info(
     "Top 10 features by permutation importance:\n%s", perm_imp.head(10).to_string()
 )
+
+if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+
