@@ -1,6 +1,5 @@
 import json
 import os
-from datetime import datetime
 from typing import Dict
 
 import matplotlib.pyplot as plt
@@ -24,11 +23,11 @@ def plot_shap_values(
     X: pd.DataFrame,
     model_name: str,
     params: Dict,
+    timestamp: str,
     folder: str = "graphs",
     top_n: int = 20,
 ):
     """Compute and plot SHAP values with Oxford colours."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = os.path.join(folder, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 

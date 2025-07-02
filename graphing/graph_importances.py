@@ -1,6 +1,5 @@
 import json
 import os
-from datetime import datetime
 from typing import Dict
 
 import matplotlib.pyplot as plt
@@ -22,11 +21,11 @@ def plot_feature_importance(
     feature_importance: pd.Series,
     model_name: str,
     params: Dict,
+    timestamp: str,
     folder: str = "graphs",
     top_n: int = 20,
 ):
     """Plot feature importances using Oxford colours and save artefacts."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = os.path.join(folder, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
