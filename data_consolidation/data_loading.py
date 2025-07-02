@@ -104,3 +104,44 @@ def load_data(chromosome):
     )
 
     return merged_traitgym_data
+
+
+def load_all_chromosomes(chromosomes=None):
+    """Load and combine data for multiple chromosomes.
+
+    Parameters
+    ----------
+    chromosomes : list of int or str, optional
+        Chromosome identifiers to load. Defaults to ``range(1, 23)``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Concatenated dataframe containing data from all specified chromosomes.
+    """
+    if chromosomes is None:
+        chromosomes = list(range(1, 23))
+
+    all_dfs = []
+    for chrom in chromosomes:
+        logging.info(f"Loading chromosome {chrom}")
+        all_dfs.append(load_data(chromosome=chrom))
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    logging.info(f"Combined dataframe shape: {combined_df.shape}")
+
+    convert_columns = {
+        "chrom": int,
+        "ref": "category",
+        "alt": "category",
+        "OMIM": "category",
+        "consequence": "category",
+        "SNP": "category",
+        "trait": "category",
+    }
+    for col, dtype in convert_columns.items():
+        if col in combined_df.columns:
+            combined_df[col] = combined_df[col].astype(dtype)
+        else:
+            logging.warning(f"Column {col} not found in merged_traitgym_data")
+    return combined_df
