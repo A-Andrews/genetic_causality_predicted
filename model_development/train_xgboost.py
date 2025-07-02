@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import average_precision_score
-from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.utils import resample
 
 import data_consolidation.data_loading as data_loading
@@ -48,14 +47,16 @@ logging.info(
     f"Object columns:\n{data.select_dtypes(include='object').columns.tolist()}"
 )
 
+# Chromosome to hold out for validation
+HOLDOUT_CHROM = 22
+
 X = data.drop(columns=["label"])  # Features
 y = data["label"]  # Target variable
 
+train_mask = data["chrom"] != HOLDOUT_CHROM
 
-# Split data
-X_train, X_val, y_train, y_val = train_test_split(
-    X, y, stratify=y, test_size=0.2, random_state=42
-)
+X_train, y_train = X[train_mask], y[train_mask]
+X_val, y_val = X[~train_mask], y[~train_mask]
 
 y_train_counts = dict(zip(*np.unique(y_train, return_counts=True)))
 y_val_counts = dict(zip(*np.unique(y_val, return_counts=True)))
@@ -99,20 +100,26 @@ logging.info(f"AUPRC: {ap:.3f} (positives in val: {y_val_counts.get(True, 0)})")
 # K-Fold Cross-Validation with optional oversampling
 # ---------------------------------------------------------------------------
 
-logging.info("Starting 5-fold cross-validation with oversampling")
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+logging.info("Starting chromosome hold-out cross-validation")
+chromosomes = sorted(data["chrom"].unique())
 cv_scores = []
 
-for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), start=1):
-    X_train_cv, y_train_cv = X.iloc[train_idx], y.iloc[train_idx]
-    X_val_cv, y_val_cv = X.iloc[val_idx], y.iloc[val_idx]
+for chrom in chromosomes:
+    train_mask = data["chrom"] != chrom
+    X_train_cv, y_train_cv = X[train_mask], y[train_mask]
+    X_val_cv, y_val_cv = X[~train_mask], y[~train_mask]
 
-    X_train_cv, y_train_cv = oversample_minority(X_train_cv, y_train_cv)
+    # X_train_cv, y_train_cv = oversample_minority(X_train_cv, y_train_cv)
+
+    pos = np.sum(y_train_cv == True)
+    neg = np.sum(y_train_cv == False)
+    spw = (neg / pos) if pos > 0 else 1.0
 
     model = xgb.XGBClassifier(
         eval_metric="logloss",
         enable_categorical=True,
         base_score=0.5,
+        scale_pos_weight=spw,
     )
     model.fit(X_train_cv, y_train_cv)
 
@@ -120,7 +127,9 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), start=1):
     ap_cv = average_precision_score(y_val_cv, y_pred_cv)
     cv_scores.append(ap_cv)
     logging.info(
-        f"Fold {fold} AUPRC: {ap_cv:.3f} (positives in val: {(y_val_cv == True).sum()})"
+        f"Chromosome {chrom} AUPRC: {ap_cv:.3f} (positives in val: {(y_val_cv == True).sum()})"
     )
 
-logging.info(f"Mean CV AUPRC: {np.mean(cv_scores):.3f} +/- {np.std(cv_scores):.3f}")
+logging.info(
+    f"Mean chromosome CV AUPRC: {np.mean(cv_scores):.3f} +/- {np.std(cv_scores):.3f}"
+)
