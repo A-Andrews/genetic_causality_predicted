@@ -1,4 +1,7 @@
+import json
 import logging
+import os
+from dataclasses import asdict
 from typing import Dict, Tuple
 
 import numpy as np
@@ -91,3 +94,46 @@ def compute_permutation_importance(
     )
     imp = pd.Series(result.importances_mean, index=X.columns)
     return imp.sort_values(ascending=False)
+
+leaky_cols = [
+    "chrom",
+    "pos",
+    "ref",
+    "alt",
+    "SNP",
+    "trait",
+    "CHR",
+    "BP",
+    "CM",
+    "genetic_dist",
+    "variant_id",
+    "label",
+    "pip",
+]
+
+
+def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+    """Prepare dataframe for modelling by dropping leak-prone columns."""
+
+    logging.info("Data loaded successfully.")
+    logging.info(f"Data shape: {data.shape}")
+    logging.info(f"Columns: {data.columns.tolist()}")
+    logging.info(f"Column types:\n{data.dtypes}")
+    logging.info(
+        f"Object columns:\n{data.select_dtypes(include='object').columns.tolist()}"
+    )
+
+    X = data.drop(columns=["label"])
+    y = data["label"]
+
+    X = X.drop(columns=[col for col in leaky_cols if col in X.columns])
+
+    return X, y
+
+
+def save_args(args, directory: str) -> None:
+    """Persist CLI arguments for reproducibility."""
+
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, "cli_args.json"), "w") as f:
+        json.dump(asdict(args), f, indent=2)

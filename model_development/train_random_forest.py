@@ -7,7 +7,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from model_utils import (
     compute_feature_importance,
     compute_permutation_importance,
@@ -16,6 +15,7 @@ from model_utils import (
     prepare_data,
     save_args,
 )
+from sklearn.ensemble import RandomForestClassifier
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
@@ -27,17 +27,15 @@ from utils import setup_logger
 class TrainArgs:
     """Command line arguments for training."""
 
-    n_estimators: int = 100
-    learning_rate: float = 0.3
-    max_depth: int = 6
+    n_estimators: int = 200
+    max_depth: int | None = None
     random_state: int = 42
 
 
 def parse_args() -> TrainArgs:
-    parser = argparse.ArgumentParser(description="Train XGBoost model")
-    parser.add_argument("--n_estimators", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=0.3)
-    parser.add_argument("--max_depth", type=int, default=6)
+    parser = argparse.ArgumentParser(description="Train RandomForest model")
+    parser.add_argument("--n_estimators", type=int, default=200)
+    parser.add_argument("--max_depth", type=int, default=None)
     parser.add_argument("--random_state", type=int, default=42)
     return TrainArgs(**vars(parser.parse_args()))
 
@@ -62,18 +60,10 @@ def main() -> None:
 
         # X_train_cv, y_train_cv = oversample_minority(X_train_cv, y_train_cv)
 
-        pos = np.sum(y_train_cv == True)
-        neg = np.sum(y_train_cv == False)
-        spw = (neg / pos) if pos > 0 else 1.0
-
-        model = xgb.XGBClassifier(
-            eval_metric="logloss",
-            enable_categorical=True,
-            base_score=0.5,
+        model = RandomForestClassifier(
             n_estimators=args.n_estimators,
-            learning_rate=args.learning_rate,
             max_depth=args.max_depth,
-            scale_pos_weight=spw,
+            n_jobs=-1,
             random_state=args.random_state,
         )
         model.fit(X_train_cv, y_train_cv)
@@ -95,18 +85,10 @@ def main() -> None:
         np.std(cv_scores),
     )
 
-    pos_total = np.sum(y == True)
-    neg_total = np.sum(y == False)
-    spw_total = (neg_total / pos_total) if pos_total > 0 else 1.0
-
-    final_model = xgb.XGBClassifier(
-        eval_metric="logloss",
-        enable_categorical=True,
-        base_score=0.5,
+    final_model = RandomForestClassifier(
         n_estimators=args.n_estimators,
-        learning_rate=args.learning_rate,
         max_depth=args.max_depth,
-        scale_pos_weight=spw_total,
+        n_jobs=-1,
         random_state=args.random_state,
     )
 
@@ -117,16 +99,14 @@ def main() -> None:
         "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
     )
 
-    # perm_imp = compute_permutation_importance(final_model, X, y)
-    # logging.info(
-    #     "Top 10 features by permutation importance:\n%s",
-    #     perm_imp.head(10).to_string(),
-    # )
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    fi_path = plot_feature_importance(feature_imp, "XGBoost", asdict(args), timestamp)
-    shap_path = plot_shap_values(final_model, X, "XGBoost", asdict(args), timestamp)
+    fi_path = plot_feature_importance(
+        feature_imp, "RandomForest", asdict(args), timestamp
+    )
+    shap_path = plot_shap_values(
+        final_model, X, "RandomForest", asdict(args), timestamp
+    )
 
     for path in [fi_path, shap_path]:
         save_args(args, os.path.dirname(path))

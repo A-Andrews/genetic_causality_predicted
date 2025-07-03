@@ -7,7 +7,6 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from model_utils import (
     compute_feature_importance,
     compute_permutation_importance,
@@ -16,10 +15,10 @@ from model_utils import (
     prepare_data,
     save_args,
 )
+from sklearn.neural_network import MLPClassifier
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
-from graphing.graph_shap_values import plot_shap_values
 from utils import setup_logger
 
 
@@ -27,19 +26,22 @@ from utils import setup_logger
 class TrainArgs:
     """Command line arguments for training."""
 
-    n_estimators: int = 100
-    learning_rate: float = 0.3
-    max_depth: int = 6
+    hidden_layer_sizes: tuple[int, ...] = (100,)
+    max_iter: int = 200
     random_state: int = 42
 
 
 def parse_args() -> TrainArgs:
-    parser = argparse.ArgumentParser(description="Train XGBoost model")
-    parser.add_argument("--n_estimators", type=int, default=100)
-    parser.add_argument("--learning_rate", type=float, default=0.3)
-    parser.add_argument("--max_depth", type=int, default=6)
+    parser = argparse.ArgumentParser(description="Train MLP model")
+    parser.add_argument("--hidden_layer_sizes", type=int, nargs="*", default=[100])
+    parser.add_argument("--max_iter", type=int, default=200)
     parser.add_argument("--random_state", type=int, default=42)
-    return TrainArgs(**vars(parser.parse_args()))
+    args = parser.parse_args()
+    return TrainArgs(
+        hidden_layer_sizes=tuple(args.hidden_layer_sizes),
+        max_iter=args.max_iter,
+        random_state=args.random_state,
+    )
 
 
 def main() -> None:
@@ -62,18 +64,9 @@ def main() -> None:
 
         # X_train_cv, y_train_cv = oversample_minority(X_train_cv, y_train_cv)
 
-        pos = np.sum(y_train_cv == True)
-        neg = np.sum(y_train_cv == False)
-        spw = (neg / pos) if pos > 0 else 1.0
-
-        model = xgb.XGBClassifier(
-            eval_metric="logloss",
-            enable_categorical=True,
-            base_score=0.5,
-            n_estimators=args.n_estimators,
-            learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
-            scale_pos_weight=spw,
+        model = MLPClassifier(
+            hidden_layer_sizes=args.hidden_layer_sizes,
+            max_iter=args.max_iter,
             random_state=args.random_state,
         )
         model.fit(X_train_cv, y_train_cv)
@@ -95,27 +88,13 @@ def main() -> None:
         np.std(cv_scores),
     )
 
-    pos_total = np.sum(y == True)
-    neg_total = np.sum(y == False)
-    spw_total = (neg_total / pos_total) if pos_total > 0 else 1.0
-
-    final_model = xgb.XGBClassifier(
-        eval_metric="logloss",
-        enable_categorical=True,
-        base_score=0.5,
-        n_estimators=args.n_estimators,
-        learning_rate=args.learning_rate,
-        max_depth=args.max_depth,
-        scale_pos_weight=spw_total,
+    final_model = MLPClassifier(
+        hidden_layer_sizes=args.hidden_layer_sizes,
+        max_iter=args.max_iter,
         random_state=args.random_state,
     )
 
     final_model.fit(X, y)
-
-    feature_imp = compute_feature_importance(final_model, X.columns)
-    logging.info(
-        "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
-    )
 
     # perm_imp = compute_permutation_importance(final_model, X, y)
     # logging.info(
@@ -123,12 +102,16 @@ def main() -> None:
     #     perm_imp.head(10).to_string(),
     # )
 
+    feature_imp = compute_feature_importance(final_model, X.columns)
+    logging.info(
+        "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
+    )
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    fi_path = plot_feature_importance(feature_imp, "XGBoost", asdict(args), timestamp)
-    shap_path = plot_shap_values(final_model, X, "XGBoost", asdict(args), timestamp)
+    fi_path = plot_feature_importance(feature_imp, "MLP", asdict(args), timestamp)
 
-    for path in [fi_path, shap_path]:
+    for path in [fi_path]:
         save_args(args, os.path.dirname(path))
 
 
