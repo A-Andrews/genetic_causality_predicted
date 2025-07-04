@@ -33,7 +33,7 @@ def plot_feature_importance(
 
     fig, ax = plt.subplots(figsize=(8, 6))
     feature_importance[::-1].plot(
-        kind="barh", color=BAR_COLOURS[0], edgecolor=EDGE_COLOUR, ax=ax
+        kind="barh", color=BAR_COLOURS[0], edgecolor="none", ax=ax
     )
     ax.set_xlabel("Importance")
     ax.set_ylabel("Feature")

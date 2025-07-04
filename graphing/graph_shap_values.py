@@ -40,7 +40,7 @@ def plot_shap_values(
     shap_abs = shap_abs.sort_values(ascending=False).head(top_n)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    shap_abs[::-1].plot(kind="barh", color=BAR_COLOURS[0], edgecolor=EDGE_COLOUR, ax=ax)
+    shap_abs[::-1].plot(kind="barh", color=BAR_COLOURS[0], edgecolor="none", ax=ax)
     ax.set_xlabel("Mean |SHAP value|")
     ax.set_ylabel("Feature")
     ax.set_title(f"{model_name} SHAP Importance")
