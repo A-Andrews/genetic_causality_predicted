@@ -44,14 +44,23 @@ def main() -> None:
     args = parse_args()
     setup_logger(seed=args.random_state)
     logging.info("Training arguments: %s", args)
+    
 
     data = data_loading.load_all_chromosomes()
-    categorical_cols = data.select_dtypes(include=["category"]).columns.tolist()
-    cat_idxs = [data.columns.get_loc(col) for col in categorical_cols]
-    cat_dims = [data[col].nunique() for col in categorical_cols]
-    for col in categorical_cols:
-        data[col] = data[col].cat.codes
     X, y = prepare_data(data)
+    categorical_cols = X.select_dtypes(include=["category"]).columns.tolist()
+    cat_idxs = [X.columns.get_loc(col) for col in categorical_cols]
+    cat_dims = []
+    for col in categorical_cols:
+        X[col] = X[col].cat.add_categories("missing").fillna("missing")
+        X[col] = X[col].cat.codes
+        max_val = X[col].max()
+        if (X[col] < 0).any():
+            raise ValueError(f"Negative code found in column {col}, check encoding.")
+        cat_dims.append(max_val + 1)
+    for col, dim in zip(categorical_cols, cat_dims):
+        print(f"{col}: max code = {X[col].max()}, embedding dim = {dim}")
+    
 
     def build_model(X_train, y_train) -> TabNetClassifier:
 
@@ -66,8 +75,13 @@ def main() -> None:
             cat_dims=cat_dims,
             cat_emb_dim=3,
         )
-        model.fit(X_train.values, y_train.values, args.max_epochs, args.batch_size)
-        return build_model
+        model.fit(
+            X_train.values,
+            y_train.values,
+            max_epochs=args.max_epochs,
+            batch_size=args.batch_size,
+        )
+        return model
 
     chromosome_holdout_cv(
         data,
@@ -76,13 +90,7 @@ def main() -> None:
         build_model,
     )
 
-    final_model = build_model()
-    final_model.fit(
-        X.values,
-        y.values,
-        max_epochs=args.max_epochs,
-        batch_size=args.batch_size,
-    )
+    final_model = build_model(X, y)
 
     feature_imp = compute_feature_importance(final_model, X.columns)
     logging.info(
