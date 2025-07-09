@@ -4,9 +4,13 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 
-from model_utils import compute_feature_importance, prepare_data, save_args
+from model_utils import (
+    chromosome_holdout_cv,
+    compute_feature_importance,
+    prepare_data,
+    save_args,
+)
 from pytorch_tabnet.tab_model import TabNetClassifier
-from training_utils import chromosome_holdout_cv
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
@@ -48,7 +52,6 @@ def main() -> None:
     args = parse_args()
     setup_logger(seed=args.random_state)
     logging.info("Training arguments: %s", args)
-    
 
     data = data_loading.load_all_chromosomes()
     X, y = prepare_data(data)
@@ -64,7 +67,6 @@ def main() -> None:
         cat_dims.append(max_val + 1)
     for col, dim in zip(categorical_cols, cat_dims):
         print(f"{col}: max code = {X[col].max()}, embedding dim = {dim}")
-    
 
     def build_model(X_train, y_train, *, eval_set=None) -> TabNetClassifier:
 
