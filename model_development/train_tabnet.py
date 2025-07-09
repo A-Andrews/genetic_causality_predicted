@@ -7,6 +7,7 @@ from datetime import datetime
 from model_utils import (
     chromosome_holdout_cv,
     compute_feature_importance,
+    compute_permutation_importance,
     prepare_data,
     save_args,
 )
@@ -81,6 +82,8 @@ def main() -> None:
             cat_dims=cat_dims,
             cat_emb_dim=3,
         )
+        if eval_set is not None:
+            eval_set = [(X.values, y.values) for X, y in eval_set]
         model.fit(
             X_train.values,
             y_train.values,
@@ -105,6 +108,18 @@ def main() -> None:
     logging.info(
         "Top 10 features by model importance:\n%s",
         feature_imp.head(10).to_string(),
+    )
+
+    perm_imp = compute_permutation_importance(
+        final_model,
+        X,
+        y,
+        sample_size=5000,
+        n_repeats=5,
+    )
+    logging.info(
+        "Top 10 features by permutation importance:\n%s",
+        perm_imp.head(10).to_string(),
     )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

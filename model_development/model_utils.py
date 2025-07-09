@@ -87,8 +87,28 @@ def compute_permutation_importance(
     scoring: str = "roc_auc",
     n_repeats: int = 10,
     random_state: int = 42,
+    sample_size: int | None = 5000,
 ) -> pd.Series:
-    """Return permutation importance for a fitted model."""
+    """Return permutation importance for a fitted model.
+
+    To keep runtime manageable on very large datasets, a random subset of
+    ``sample_size`` rows is used when ``sample_size`` is not ``None``.
+    """
+    if len(np.unique(y)) < 2:
+        logging.warning(
+            "Only one class present in y; using f1 for permutation importance"
+        )
+        scoring = "f1"
+
+    if sample_size is not None and len(X) > sample_size:
+        X, y = resample(
+            X,
+            y,
+            n_samples=sample_size,
+            replace=False,
+            random_state=random_state,
+        )
+
     result = permutation_importance(
         model,
         X,
@@ -96,6 +116,7 @@ def compute_permutation_importance(
         n_repeats=n_repeats,
         random_state=random_state,
         scoring=scoring,
+        n_jobs=-1,
     )
     imp = pd.Series(result.importances_mean, index=X.columns)
     return imp.sort_values(ascending=False)
@@ -149,7 +170,7 @@ def chromosome_holdout_cv(
     data: pd.DataFrame,
     X: pd.DataFrame,
     y: pd.Series,
-    build_model: Callable[[pd.DataFrame, pd.Series], Any],
+    build_model: Callable[..., Any],
 ) -> List[float]:
     """Run chromosome hold-out cross-validation."""
     chromosomes = sorted(data["chrom"].unique())
@@ -162,9 +183,12 @@ def chromosome_holdout_cv(
         model = build_model(
             X_train,
             y_train,
-            eval_set=[(X_val.values, y_val.values)],
+            eval_set=[(X_val, y_val)],
         )
-        y_pred = model.predict_proba(X_val.values)[:, 1]
+
+        # XGBoost can handle DataFrames directly while TabNet requires ndarrays
+        x_val_pred = X_val if hasattr(model, "get_booster") else X_val.values
+        y_pred = model.predict_proba(x_val_pred)[:, 1]
         metrics = evaluate(y_val, y_pred)
         cv_scores.append(metrics["auprc"])
         logging.info(
@@ -186,7 +210,7 @@ def chromosome_holdout_cv(
 def train_final_model(
     X: pd.DataFrame,
     y: pd.Series,
-    build_model: Callable[[pd.DataFrame, pd.Series, Any], Any],
+    build_model: Callable[..., Any],
     model_name: str,
     args: dataclass,
 ) -> Any:
@@ -204,7 +228,8 @@ def train_final_model(
     fi_path = plot_feature_importance(feature_imp, model_name, params, timestamp)
     shap_path = plot_shap_values(model, X, model_name, params, timestamp)
 
-    y_pred = model.predict_proba(X)[:, 1]
+    x_pred = X if hasattr(model, "get_booster") else X.values
+    y_pred = model.predict_proba(x_pred)[:, 1]
     metrics = evaluate(y, y_pred)
     metrics_path = plot_model_metrics(metrics, model_name, params, timestamp)
 
