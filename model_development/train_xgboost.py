@@ -19,6 +19,7 @@ from model_utils import (
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
+from graphing.graph_model_metrics import plot_model_metrics
 from graphing.graph_shap_values import plot_shap_values
 from utils import setup_logger
 
@@ -127,8 +128,11 @@ def main() -> None:
 
     fi_path = plot_feature_importance(feature_imp, "XGBoost", asdict(args), timestamp)
     shap_path = plot_shap_values(final_model, X, "XGBoost", asdict(args), timestamp)
+    y_pred_final = final_model.predict_proba(X)[:, 1]
+    metrics_final = evaluate(y, y_pred_final)
+    metrics_path = plot_model_metrics(metrics_final, "XGBoost", asdict(args), timestamp)
 
-    for path in [fi_path, shap_path]:
+    for path in [fi_path, shap_path, metrics_path]:
         save_args(args, os.path.dirname(path))
 
 

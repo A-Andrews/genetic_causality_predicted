@@ -9,6 +9,7 @@ import pandas as pd
 from model_utils import compute_feature_importance, evaluate, save_args
 
 from graphing.graph_importances import plot_feature_importance
+from graphing.graph_model_metrics import plot_model_metrics
 from graphing.graph_shap_values import plot_shap_values
 
 
@@ -27,7 +28,7 @@ def chromosome_holdout_cv(
         X_val, y_val = X[~train_mask], y[~train_mask]
 
         model = build_model(X_train, y_train)
-        y_pred = model.predict_proba(X_val)[:, 1]
+        y_pred = model.predict_proba(X_val.values)[:, 1]
         metrics = evaluate(y_val, y_pred)
         cv_scores.append(metrics["auprc"])
         logging.info(
@@ -67,7 +68,11 @@ def train_final_model(
     fi_path = plot_feature_importance(feature_imp, model_name, params, timestamp)
     shap_path = plot_shap_values(model, X, model_name, params, timestamp)
 
-    for path in [fi_path, shap_path]:
+    y_pred = model.predict_proba(X)[:, 1]
+    metrics = evaluate(y, y_pred)
+    metrics_path = plot_model_metrics(metrics, model_name, params, timestamp)
+
+    for path in [fi_path, shap_path, metrics_path]:
         save_args(args, os.path.dirname(path))
 
     return model
