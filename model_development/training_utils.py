@@ -27,7 +27,11 @@ def chromosome_holdout_cv(
         X_train, y_train = X[train_mask], y[train_mask]
         X_val, y_val = X[~train_mask], y[~train_mask]
 
-        model = build_model(X_train, y_train)
+        model = build_model(
+            X_train,
+            y_train,
+            eval_set=[(X_val.values, y_val.values)],
+        )
         y_pred = model.predict_proba(X_val.values)[:, 1]
         metrics = evaluate(y_val, y_pred)
         cv_scores.append(metrics["auprc"])
@@ -50,7 +54,7 @@ def chromosome_holdout_cv(
 def train_final_model(
     X: pd.DataFrame,
     y: pd.Series,
-    build_model: Callable[[pd.DataFrame, pd.Series], Any],
+    build_model: Callable[[pd.DataFrame, pd.Series, Any], Any],
     model_name: str,
     args: dataclass,
 ) -> Any:

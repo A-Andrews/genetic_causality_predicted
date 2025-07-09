@@ -24,6 +24,8 @@ class TrainArgs:
     lambda_sparse: float = 1e-3
     max_epochs: int = 50
     batch_size: int = 1024
+    patience: int = 15
+    num_workers: int = 0
     random_state: int = 42
 
 
@@ -36,6 +38,8 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--lambda_sparse", type=float, default=1e-3)
     parser.add_argument("--max_epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=1024)
+    parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--random_state", type=int, default=42)
     return TrainArgs(**vars(parser.parse_args()))
 
@@ -62,7 +66,7 @@ def main() -> None:
         print(f"{col}: max code = {X[col].max()}, embedding dim = {dim}")
     
 
-    def build_model(X_train, y_train) -> TabNetClassifier:
+    def build_model(X_train, y_train, *, eval_set=None) -> TabNetClassifier:
 
         model = TabNetClassifier(
             n_d=args.n_d,
@@ -78,8 +82,11 @@ def main() -> None:
         model.fit(
             X_train.values,
             y_train.values,
+            eval_set=eval_set,
             max_epochs=args.max_epochs,
+            patience=args.patience,
             batch_size=args.batch_size,
+            num_workers=args.num_workers,
         )
         return model
 
