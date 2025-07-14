@@ -3,7 +3,6 @@ import logging
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass
 
 from model_utils import (
     chromosome_holdout_cv,
@@ -33,6 +32,7 @@ class TrainArgs:
     patience: int = 15
     num_workers: int = 0
     random_state: int = 42
+    n_runs: int = 1
 
 
 def parse_args() -> TrainArgs:
@@ -47,6 +47,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--random_state", type=int, default=42)
+    parser.add_argument("--n_runs", type=int, default=1)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -70,7 +71,9 @@ def main() -> None:
     for col, dim in zip(categorical_cols, cat_dims):
         print(f"{col}: max code = {X[col].max()}, embedding dim = {dim}")
 
-    def build_model(X_train, y_train, *, eval_set=None) -> TabNetClassifier:
+    def build_model(
+        X_train, y_train, *, eval_set=None, random_state=None
+    ) -> TabNetClassifier:
 
         model = TabNetClassifier(
             n_d=args.n_d,
@@ -78,7 +81,7 @@ def main() -> None:
             n_steps=args.n_steps,
             gamma=args.gamma,
             lambda_sparse=args.lambda_sparse,
-            seed=args.random_state,
+            seed=args.random_state if random_state is None else random_state,
             cat_idxs=cat_idxs,
             cat_dims=cat_dims,
             cat_emb_dim=3,
@@ -101,10 +104,14 @@ def main() -> None:
         X,
         y,
         build_model,
+        n_runs=args.n_runs,
+        random_state=args.random_state,
         collect_importance=True,
     )
-    metric_errors = cv_metrics.std().to_dict()
-    fi_errors = fi_df.std(axis=1) if fi_df is not None else None
+    metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
+    fi_errors = (
+        fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
+    )
 
     train_final_model(
         X,

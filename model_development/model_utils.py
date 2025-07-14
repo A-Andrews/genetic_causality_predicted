@@ -107,7 +107,8 @@ def compute_permutation_importance(
         logging.warning(
             "Only one class present in y; using skipping for permutation importance"
         )
-        return pd.Series(dtype=float)
+        empty = pd.Series(dtype=float)
+        return empty, empty
 
     if sample_size is not None and len(X) > sample_size:
         X, y = resample(
@@ -184,48 +185,62 @@ def chromosome_holdout_cv(
     y: pd.Series,
     build_model: Callable[..., Any],
     *,
+    n_runs: int = 1,
+    random_state: int | None = None,
     collect_importance: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame | None]:
     """Run chromosome hold-out cross-validation."""
+    rng = np.random.default_rng(random_state)
     chromosomes = sorted(data["chrom"].unique())
-    cv_metrics = []
-    fi_list = [] if collect_importance else None
-    for chrom in chromosomes:
-        train_mask = data["chrom"] != chrom
-        X_train, y_train = X[train_mask], y[train_mask]
-        X_val, y_val = X[~train_mask], y[~train_mask]
+    run_metrics = []
+    fi_runs = [] if collect_importance else None
+    for run in range(n_runs):
+        logging.info("Starting CV run %d/%d", run + 1, n_runs)
+        run_seed = None if random_state is None else int(rng.integers(0, 1_000_000))
+        fold_metrics = []
+        fi_list = [] if collect_importance else None
+        for chrom in chromosomes:
+            train_mask = data["chrom"] != chrom
+            X_train, y_train = X[train_mask], y[train_mask]
+            X_val, y_val = X[~train_mask], y[~train_mask]
 
-        model = build_model(
-            X_train,
-            y_train,
-            eval_set=[(X_val, y_val)],
-        )
+            model = build_model(
+                X_train,
+                y_train,
+                eval_set=[(X_val, y_val)],
+                random_state=run_seed,
+            )
 
-        # XGBoost can handle DataFrames directly while TabNet requires ndarrays
-        x_val_pred = X_val if hasattr(model, "get_booster") else X_val.values
-        y_pred = model.predict_proba(x_val_pred)[:, 1]
-        metrics = evaluate(y_val, y_pred)
-        cv_metrics.append(metrics)
+            # XGBoost can handle DataFrames directly while TabNet requires ndarrays
+            x_val_pred = X_val if hasattr(model, "get_booster") else X_val.values
+            y_pred = model.predict_proba(x_val_pred)[:, 1]
+            metrics = evaluate(y_val, y_pred)
+            fold_metrics.append(metrics)
+            if collect_importance:
+                fi = compute_feature_importance(model, X.columns)
+                fi_list.append(fi)
+            logging.info(
+                "Run %d, Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
+                run + 1,
+                chrom,
+                metrics["auprc"],
+                metrics["roc_auc"],
+                (y_val == True).sum(),
+            )
+
+        fold_df = pd.DataFrame(fold_metrics)
+        run_metrics.append(fold_df.mean())
         if collect_importance:
-            fi = compute_feature_importance(model, X.columns)
-            fi_list.append(fi)
-        logging.info(
-            "Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
-            chrom,
-            metrics["auprc"],
-            metrics["roc_auc"],
-            (y_val == True).sum(),
-        )
+            fi_runs.append(pd.concat(fi_list, axis=1).mean(axis=1))
 
-    metrics_df = pd.DataFrame(cv_metrics)
+    metrics_df = pd.DataFrame(run_metrics)
     logging.info(
-        "Mean chromosome CV AUPRC: %.3f +/- %.3f",
+        "Mean CV AUPRC over %d runs: %.3f +/- %.3f",
+        n_runs,
         metrics_df["auprc"].mean(),
-        metrics_df["auprc"].std(),
+        metrics_df["auprc"].std() / np.sqrt(n_runs),
     )
-    fi_df = None
-    if collect_importance:
-        fi_df = pd.concat(fi_list, axis=1)
+    fi_df = pd.concat(fi_runs, axis=1) if collect_importance else None
     return metrics_df, fi_df
 
 

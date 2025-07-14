@@ -88,3 +88,17 @@
 | Background Selection | A form of **purifying selection** that removes deleterious alleles and reduces variation in linked regions. |
 | Nucleotide Diversity | A measure of the **genetic variation** in a population at the nucleotide level. Higher values imply more diversity. |
 
+## Evolutionary Features
+
+- Conserved_LindbladToh
+- Conserved_Mammal_phastCons46way
+- Conserved_Primate_phastCons46way
+- Conserved_Vertebrate_phastCons46way
+- GERP.NS
+- GERP.RSsup4
+
+### Sequence Age
+- Ancient_Sequence_Age_Human_Promoter
+- Ancient_Sequence_Age_Human_Enhancer
+- Human_Enhancer_Villar_Species_Enhancer_Count
+- Human_Promoter_Villar_ExAC

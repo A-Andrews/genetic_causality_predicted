@@ -20,6 +20,7 @@ class TrainArgs:
     learning_rate: float = 0.3
     max_depth: int = 6
     random_state: int = 42
+    n_runs: int = 2
 
 
 def compute_scale_pos_weight(y: pd.Series) -> float:
@@ -35,6 +36,7 @@ def build_xgb_classifier(
     args: dataclass,
     *,
     eval_set: List[Tuple[np.ndarray, np.ndarray]] | None = None,
+    random_state: int | None = None,
 ) -> xgb.XGBClassifier:
     """Return a fitted :class:`xgboost.XGBClassifier`."""
 
@@ -46,7 +48,7 @@ def build_xgb_classifier(
         learning_rate=args.learning_rate,
         max_depth=args.max_depth,
         scale_pos_weight=compute_scale_pos_weight(y_train),
-        random_state=args.random_state,
+        random_state=args.random_state if random_state is None else random_state,
     )
 
     model.fit(X_train, y_train, eval_set=eval_set)
@@ -59,6 +61,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--learning_rate", type=float, default=0.3)
     parser.add_argument("--max_depth", type=int, default=6)
     parser.add_argument("--random_state", type=int, default=42)
+    parser.add_argument("--n_runs", type=int, default=2)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -71,12 +74,13 @@ def main() -> None:
 
     X, y = prepare_data(data)
 
-    def build_model(X_train, y_train, *, eval_set=None):
+    def build_model(X_train, y_train, *, eval_set=None, random_state=None):
         return build_xgb_classifier(
             X_train,
             y_train,
             args,
             eval_set=eval_set,
+            random_state=random_state,
         )
 
     cv_metrics, fi_df = chromosome_holdout_cv(
@@ -84,10 +88,14 @@ def main() -> None:
         X,
         y,
         build_model,
+        n_runs=args.n_runs,
+        random_state=args.random_state,
         collect_importance=True,
     )
-    metric_errors = cv_metrics.std().to_dict()
-    fi_errors = fi_df.std(axis=1) if fi_df is not None else None
+    metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
+    fi_errors = (
+        fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
+    )
 
     train_final_model(
         X,
