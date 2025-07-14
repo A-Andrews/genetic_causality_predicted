@@ -103,9 +103,15 @@ def compute_permutation_importance(
         Mean and standard deviation of the permutation importance for each
         feature.
     """
+    logging.info(
+        "Permutation importance on data shape %s with label distribution %s",
+        X.shape,
+        y.value_counts().to_dict(),
+    )
     if len(np.unique(y)) < 2:
         logging.warning(
-            "Only one class present in y; using skipping for permutation importance"
+            "Only one class present in y; skipping permutation importance. Distribution: %s",
+            y.value_counts().to_dict(),
         )
         empty = pd.Series(dtype=float)
         return empty, empty
@@ -117,6 +123,11 @@ def compute_permutation_importance(
             n_samples=sample_size,
             replace=False,
             random_state=random_state,
+        )
+        logging.info(
+            "Sampling %d rows for permutation importance. New distribution %s",
+            len(X),
+            y.value_counts().to_dict(),
         )
 
     result = permutation_importance(
