@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu_short
+#SBATCH --partition=gpu_long
 #SBATCH --gres=gpu:1
 #SBATCH --job-name=train_tabnet
 #SBATCH --output=logs/%x_%j.out

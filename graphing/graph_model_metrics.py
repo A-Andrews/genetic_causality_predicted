@@ -1,6 +1,7 @@
-import os
 import json
+import os
 from typing import Dict
+
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -22,15 +23,36 @@ def plot_model_metrics(
     params: Dict,
     timestamp: str,
     folder: str = "graphs",
+    errors: Dict[str, float] | None = None,
 ):
-    """Plot bar chart of model performance metrics and save artefacts."""
+    """Plot bar chart of model performance metrics and save artefacts.
+
+    Parameters
+    ----------
+    metrics
+        Mapping of metric name to score (typically mean across folds).
+    errors
+        Optional mapping of metric name to error (e.g. standard deviation).
+        When provided, error bars are drawn using ``matplotlib``'s ``yerr``.
+    """
     out_dir = os.path.join(folder, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
     metrics_series = pd.Series(metrics)
 
     fig, ax = plt.subplots(figsize=(6, 4))
-    metrics_series.plot(kind="bar", color=BAR_COLOURS[0], edgecolor="none", ax=ax)
+    yerr = None
+    if errors is not None:
+        yerr = pd.Series(errors).reindex(metrics_series.index).values
+    ax.bar(
+        metrics_series.index,
+        metrics_series.values,
+        yerr=yerr,
+        color=BAR_COLOURS[0],
+        edgecolor="none",
+        ecolor=EDGE_COLOUR,
+        capsize=3,
+    )
     ax.set_ylabel("Score")
     ax.set_xlabel("Metric")
     ax.set_title(f"{model_name} Performance")

@@ -26,8 +26,15 @@ def plot_shap_values(
     timestamp: str,
     folder: str = "graphs",
     top_n: int = 20,
+    errors: pd.Series | None = None,
 ):
-    """Compute and plot SHAP values with Oxford colours."""
+    """Compute and plot SHAP values with Oxford colours.
+
+    Parameters
+    ----------
+    errors
+        Optional error values to display as horizontal error bars.
+    """
     out_dir = os.path.join(folder, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -38,9 +45,19 @@ def plot_shap_values(
 
     shap_abs = pd.Series(abs(shap_values).mean(axis=0), index=X.columns)
     shap_abs = shap_abs.sort_values(ascending=False).head(top_n)
+    if errors is not None:
+        errors = errors.reindex(shap_abs.index)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    shap_abs[::-1].plot(kind="barh", color=BAR_COLOURS[0], edgecolor="none", ax=ax)
+    ax.barh(
+        shap_abs.index[::-1],
+        shap_abs.values[::-1],
+        xerr=None if errors is None else errors.values[::-1],
+        color=BAR_COLOURS[0],
+        edgecolor="none",
+        ecolor=EDGE_COLOUR,
+        capsize=3,
+    )
     ax.set_xlabel("Mean |SHAP value|")
     ax.set_ylabel("Feature")
     ax.set_title(f"{model_name} SHAP Importance")

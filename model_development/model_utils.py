@@ -16,7 +16,10 @@ from sklearn.metrics import (
 )
 from sklearn.utils import resample
 
-from graphing.graph_importances import plot_feature_importance
+from graphing.graph_importances import (
+    plot_feature_importance,
+    plot_permutation_importance,
+)
 from graphing.graph_model_metrics import plot_model_metrics
 from graphing.graph_shap_values import plot_shap_values
 
@@ -228,12 +231,19 @@ def train_final_model(
     fi_path = plot_feature_importance(feature_imp, model_name, params, timestamp)
     shap_path = plot_shap_values(model, X, model_name, params, timestamp)
 
+    perm_imp = compute_permutation_importance(model, X, y)
+    logging.info(
+        "Top 10 features by permutation importance:\n%s",
+        perm_imp.head(10).to_string(),
+    )
+    pi_path = plot_permutation_importance(perm_imp, model_name, params, timestamp)
+
     x_pred = X if hasattr(model, "get_booster") else X.values
     y_pred = model.predict_proba(x_pred)[:, 1]
     metrics = evaluate(y, y_pred)
     metrics_path = plot_model_metrics(metrics, model_name, params, timestamp)
 
-    for path in [fi_path, shap_path, metrics_path]:
+    for path in [fi_path, shap_path, pi_path, metrics_path]:
         save_args(args, os.path.dirname(path))
 
     return model
