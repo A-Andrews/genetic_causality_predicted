@@ -3,13 +3,14 @@ import logging
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from dataclasses import dataclass
 
 from model_utils import (
     chromosome_holdout_cv,
     compute_feature_importance,
     compute_permutation_importance,
     prepare_data,
-    save_args,
+    train_final_model,
 )
 from pytorch_tabnet.tab_model import TabNetClassifier
 
@@ -41,7 +42,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--n_steps", type=int, default=3)
     parser.add_argument("--gamma", type=float, default=1.5)
     parser.add_argument("--lambda_sparse", type=float, default=1e-3)
-    parser.add_argument("--max_epochs", type=int, default=50)
+    parser.add_argument("--max_epochs", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=1024)
     parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--num_workers", type=int, default=0)
@@ -95,39 +96,25 @@ def main() -> None:
         )
         return model
 
-    chromosome_holdout_cv(
+    cv_metrics, fi_df = chromosome_holdout_cv(
         data,
         X,
         y,
         build_model,
+        collect_importance=True,
     )
+    metric_errors = cv_metrics.std().to_dict()
+    fi_errors = fi_df.std(axis=1) if fi_df is not None else None
 
-    final_model = build_model(X, y)
-
-    feature_imp = compute_feature_importance(final_model, X.columns)
-    logging.info(
-        "Top 10 features by model importance:\n%s",
-        feature_imp.head(10).to_string(),
-    )
-
-    perm_imp = compute_permutation_importance(
-        final_model,
+    train_final_model(
         X,
         y,
-        sample_size=5000,
-        n_repeats=5,
+        build_model,
+        "TabNet",
+        args,
+        metric_errors=metric_errors,
+        fi_errors=fi_errors,
     )
-    logging.info(
-        "Top 10 features by permutation importance:\n%s",
-        perm_imp.head(10).to_string(),
-    )
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    fi_path = plot_feature_importance(feature_imp, "TabNet", asdict(args), timestamp)
-
-    for path in [fi_path]:
-        save_args(args, os.path.dirname(path))
 
 
 if __name__ == "__main__":

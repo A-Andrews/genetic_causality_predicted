@@ -77,16 +77,25 @@ def plot_permutation_importance(
     timestamp: str,
     folder: str = "graphs",
     top_n: int = 20,
+    errors: pd.Series | None = None,
 ):
     """Plot permutation importances using Oxford colours and save artefacts."""
     out_dir = os.path.join(folder, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
     perm_importance = perm_importance.sort_values(ascending=False).head(top_n)
+    if errors is not None:
+        errors = errors.reindex(perm_importance.index)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    perm_importance[::-1].plot(
-        kind="barh", color=BAR_COLOURS[0], edgecolor="none", ax=ax
+    ax.barh(
+        perm_importance.index[::-1],
+        perm_importance.values[::-1],
+        xerr=None if errors is None else errors.values[::-1],
+        color=BAR_COLOURS[0],
+        edgecolor="none",
+        ecolor=EDGE_COLOUR,
+        capsize=3,
     )
     ax.set_xlabel("Importance")
     ax.set_ylabel("Feature")

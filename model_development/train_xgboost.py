@@ -79,14 +79,25 @@ def main() -> None:
             eval_set=eval_set,
         )
 
-    chromosome_holdout_cv(
+    cv_metrics, fi_df = chromosome_holdout_cv(
         data,
         X,
         y,
         build_model,
+        collect_importance=True,
     )
+    metric_errors = cv_metrics.std().to_dict()
+    fi_errors = fi_df.std(axis=1) if fi_df is not None else None
 
-    train_final_model(X, y, build_model, "XGBoost", args)
+    train_final_model(
+        X,
+        y,
+        build_model,
+        "XGBoost",
+        args,
+        metric_errors=metric_errors,
+        fi_errors=fi_errors,
+    )
 
 
 if __name__ == "__main__":

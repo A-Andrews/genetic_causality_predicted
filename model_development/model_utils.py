@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+import shap
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
@@ -91,17 +92,22 @@ def compute_permutation_importance(
     n_repeats: int = 10,
     random_state: int = 42,
     sample_size: int | None = 5000,
-) -> pd.Series:
+) -> Tuple[pd.Series, pd.Series]:
     """Return permutation importance for a fitted model.
 
     To keep runtime manageable on very large datasets, a random subset of
     ``sample_size`` rows is used when ``sample_size`` is not ``None``.
+    Returns
+    -------
+    Tuple[pd.Series, pd.Series]
+        Mean and standard deviation of the permutation importance for each
+        feature.
     """
     if len(np.unique(y)) < 2:
         logging.warning(
-            "Only one class present in y; using f1 for permutation importance"
+            "Only one class present in y; using skipping for permutation importance"
         )
-        scoring = "f1"
+        return pd.Series(dtype=float)
 
     if sample_size is not None and len(X) > sample_size:
         X, y = resample(
@@ -121,8 +127,11 @@ def compute_permutation_importance(
         scoring=scoring,
         n_jobs=-1,
     )
-    imp = pd.Series(result.importances_mean, index=X.columns)
-    return imp.sort_values(ascending=False)
+    imp_mean = pd.Series(result.importances_mean, index=X.columns)
+    imp_std = pd.Series(result.importances_std, index=X.columns)
+    imp_mean = imp_mean.sort_values(ascending=False)
+    imp_std = imp_std.reindex(imp_mean.index)
+    return imp_mean, imp_std
 
 
 leaky_cols = [
@@ -174,10 +183,13 @@ def chromosome_holdout_cv(
     X: pd.DataFrame,
     y: pd.Series,
     build_model: Callable[..., Any],
-) -> List[float]:
+    *,
+    collect_importance: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame | None]:
     """Run chromosome hold-out cross-validation."""
     chromosomes = sorted(data["chrom"].unique())
-    cv_scores = []
+    cv_metrics = []
+    fi_list = [] if collect_importance else None
     for chrom in chromosomes:
         train_mask = data["chrom"] != chrom
         X_train, y_train = X[train_mask], y[train_mask]
@@ -193,7 +205,10 @@ def chromosome_holdout_cv(
         x_val_pred = X_val if hasattr(model, "get_booster") else X_val.values
         y_pred = model.predict_proba(x_val_pred)[:, 1]
         metrics = evaluate(y_val, y_pred)
-        cv_scores.append(metrics["auprc"])
+        cv_metrics.append(metrics)
+        if collect_importance:
+            fi = compute_feature_importance(model, X.columns)
+            fi_list.append(fi)
         logging.info(
             "Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
             chrom,
@@ -202,12 +217,16 @@ def chromosome_holdout_cv(
             (y_val == True).sum(),
         )
 
+    metrics_df = pd.DataFrame(cv_metrics)
     logging.info(
         "Mean chromosome CV AUPRC: %.3f +/- %.3f",
-        np.mean(cv_scores),
-        np.std(cv_scores),
+        metrics_df["auprc"].mean(),
+        metrics_df["auprc"].std(),
     )
-    return cv_scores
+    fi_df = None
+    if collect_importance:
+        fi_df = pd.concat(fi_list, axis=1)
+    return metrics_df, fi_df
 
 
 def train_final_model(
@@ -216,6 +235,9 @@ def train_final_model(
     build_model: Callable[..., Any],
     model_name: str,
     args: dataclass,
+    *,
+    metric_errors: Dict[str, float] | None = None,
+    fi_errors: pd.Series | None = None,
 ) -> Any:
     """Train final model and save artefacts."""
     model = build_model(X, y)
@@ -228,20 +250,39 @@ def train_final_model(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    fi_path = plot_feature_importance(feature_imp, model_name, params, timestamp)
-    shap_path = plot_shap_values(model, X, model_name, params, timestamp)
+    fi_path = plot_feature_importance(
+        feature_imp, model_name, params, timestamp, errors=fi_errors
+    )
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[0]
+    shap_err = pd.Series(abs(shap_values).std(axis=0), index=X.columns)
+    shap_path = plot_shap_values(
+        model,
+        X,
+        model_name,
+        params,
+        timestamp,
+        errors=shap_err,
+    )
 
-    perm_imp = compute_permutation_importance(model, X, y)
+    perm_imp, perm_err = compute_permutation_importance(model, X, y)
+
     logging.info(
         "Top 10 features by permutation importance:\n%s",
         perm_imp.head(10).to_string(),
     )
-    pi_path = plot_permutation_importance(perm_imp, model_name, params, timestamp)
+    pi_path = plot_permutation_importance(
+        perm_imp, model_name, params, timestamp, errors=perm_err
+    )
 
     x_pred = X if hasattr(model, "get_booster") else X.values
     y_pred = model.predict_proba(x_pred)[:, 1]
     metrics = evaluate(y, y_pred)
-    metrics_path = plot_model_metrics(metrics, model_name, params, timestamp)
+    metrics_path = plot_model_metrics(
+        metrics, model_name, params, timestamp, errors=metric_errors
+    )
 
     for path in [fi_path, shap_path, pi_path, metrics_path]:
         save_args(args, os.path.dirname(path))
