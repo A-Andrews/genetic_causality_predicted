@@ -211,6 +211,7 @@ def chromosome_holdout_cv(
         logging.info("Starting CV run %d/%d", run + 1, n_runs)
         run_seed = None if random_state is None else int(rng.integers(0, 1_000_000))
         fold_metrics = []
+        fold_weights = []
         fi_list = [] if collect_importance else None
         for chrom in chromosomes:
             train_mask = data["chrom"] != chrom
@@ -229,6 +230,7 @@ def chromosome_holdout_cv(
             y_pred = model.predict_proba(x_val_pred)[:, 1]
             metrics = evaluate(y_val, y_pred)
             fold_metrics.append(metrics)
+            fold_weights.append(len(y_val))
             if collect_importance:
                 fi = compute_feature_importance(model, X.columns)
                 fi_list.append(fi)
@@ -242,7 +244,9 @@ def chromosome_holdout_cv(
             )
 
         fold_df = pd.DataFrame(fold_metrics, index=chromosomes)
-        run_metrics.append(fold_df.mean())
+        fold_sizes = pd.Series(fold_weights, index=chromosomes)
+        weighted_mean = fold_df.mul(fold_sizes, axis=0).sum() / fold_sizes.sum()
+        run_metrics.append(weighted_mean)
         if collect_importance:
             fi_runs.append(pd.concat(fi_list, axis=1).mean(axis=1))
         if return_chrom_metrics:

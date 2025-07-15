@@ -11,12 +11,13 @@ from model_utils import (
     compute_permutation_importance,
     prepare_data,
     train_final_model,
+    save_args,
 )
 from pytorch_tabnet.tab_model import TabNetClassifier
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
-from graphing.graph_model_metrics import plot_chromosome_performance
+from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from utils import setup_logger
 
 
@@ -117,6 +118,17 @@ def main() -> None:
     fi_errors = (
         fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
     )
+
+    plot_dir = "graphs/cv"
+    cv_path = plot_model_metrics(
+        cv_metrics.mean().to_dict(),
+        "TabNet CV",
+        asdict(args),
+        timestamp,
+        folder=plot_dir,
+        errors=metric_errors,
+    )
+    save_args(args, os.path.dirname(cv_path))
 
     if chrom_mean is not None:
         plot_chromosome_performance(

@@ -1,16 +1,22 @@
 import argparse
 import logging
+import os
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from datetime import datetime
-from model_utils import chromosome_holdout_cv, prepare_data, train_final_model
-from graphing.graph_model_metrics import plot_chromosome_performance
+from model_utils import (
+    chromosome_holdout_cv,
+    prepare_data,
+    save_args,
+    train_final_model,
+)
 
 import data_consolidation.data_loading as data_loading
+from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from utils import setup_logger
 
 
@@ -101,6 +107,17 @@ def main() -> None:
     fi_errors = (
         fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
     )
+
+    plot_dir = "graphs/cv"
+    cv_path = plot_model_metrics(
+        cv_metrics.mean().to_dict(),
+        "XGBoost CV",
+        asdict(args),
+        timestamp,
+        folder=plot_dir,
+        errors=metric_errors,
+    )
+    save_args(args, os.path.dirname(cv_path))
 
     if chrom_mean is not None:
         plot_chromosome_performance(
