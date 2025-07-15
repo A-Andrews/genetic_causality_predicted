@@ -10,8 +10,8 @@ from model_utils import (
     compute_feature_importance,
     compute_permutation_importance,
     prepare_data,
-    train_final_model,
     save_args,
+    train_final_model,
 )
 from pytorch_tabnet.tab_model import TabNetClassifier
 
@@ -36,6 +36,8 @@ class TrainArgs:
     num_workers: int = 0
     random_state: int = 42
     n_runs: int = 1
+    bootstrap: bool = False
+    bootstrap_samples: int = 1
 
 
 def parse_args() -> TrainArgs:
@@ -51,6 +53,8 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--random_state", type=int, default=42)
     parser.add_argument("--n_runs", type=int, default=1)
+    parser.add_argument("--bootstrap", type=bool, default=False)
+    parser.add_argument("--bootstrap_samples", type=int, default=1)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -113,6 +117,8 @@ def main() -> None:
         random_state=args.random_state,
         collect_importance=True,
         return_chrom_metrics=True,
+        bootstrap=args.bootstrap,
+        bootstrap_samples=args.bootstrap_samples,
     )
     metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
     fi_errors = (

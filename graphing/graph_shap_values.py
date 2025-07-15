@@ -46,7 +46,7 @@ def plot_shap_values(
     shap_abs = pd.Series(abs(shap_values).mean(axis=0), index=X.columns)
     shap_abs = shap_abs.sort_values(ascending=False).head(top_n)
     if errors is not None:
-        errors = errors.reindex(shap_abs.index)
+        errors = errors.reindex(shap_abs.index).fillna(0)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.barh(

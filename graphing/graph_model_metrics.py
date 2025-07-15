@@ -43,7 +43,7 @@ def plot_model_metrics(
     fig, ax = plt.subplots(figsize=(6, 4))
     yerr = None
     if errors is not None:
-        yerr = pd.Series(errors).reindex(metrics_series.index).values
+        yerr = pd.Series(errors).reindex(metrics_series.index).fillna(0).values
     ax.bar(
         metrics_series.index,
         metrics_series.values,
@@ -102,7 +102,9 @@ def plot_chromosome_performance(
         values = chrom_metrics
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    yerr = None if errors is None else errors.reindex(values.index).values
+    yerr = None
+    if errors is not None:
+        yerr = errors.reindex(values.index).fillna(0).values
     ax.bar(
         values.index.astype(str),
         values.values,
@@ -161,7 +163,9 @@ def plot_chromosome_performance(
         values = chrom_metrics
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    yerr = None if errors is None else errors.reindex(values.index).values
+    yerr = None
+    if errors is not None:
+        yerr = errors.reindex(values.index).fillna(0).values
     ax.bar(
         values.index.astype(str),
         values.values,

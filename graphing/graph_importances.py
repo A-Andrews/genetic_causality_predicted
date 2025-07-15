@@ -41,7 +41,7 @@ def plot_feature_importance(
 
     feature_importance = feature_importance.sort_values(ascending=False).head(top_n)
     if errors is not None:
-        errors = errors.reindex(feature_importance.index)
+        errors = errors.reindex(feature_importance.index).fillna(0)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.barh(
@@ -85,7 +85,7 @@ def plot_permutation_importance(
 
     perm_importance = perm_importance.sort_values(ascending=False).head(top_n)
     if errors is not None:
-        errors = errors.reindex(perm_importance.index)
+        errors = errors.reindex(perm_importance.index).fillna(0)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.barh(

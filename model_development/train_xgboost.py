@@ -29,6 +29,8 @@ class TrainArgs:
     max_depth: int = 6
     random_state: int = 42
     n_runs: int = 2
+    bootstrap: bool = False
+    bootstrap_samples: int = 1
 
 
 def compute_scale_pos_weight(y: pd.Series) -> float:
@@ -70,6 +72,8 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--max_depth", type=int, default=6)
     parser.add_argument("--random_state", type=int, default=42)
     parser.add_argument("--n_runs", type=int, default=2)
+    parser.add_argument("--bootstrap", type=bool, default=False)
+    parser.add_argument("--bootstrap_samples", type=int, default=1)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -102,6 +106,8 @@ def main() -> None:
         random_state=args.random_state,
         collect_importance=True,
         return_chrom_metrics=True,
+        bootstrap=args.bootstrap,
+        bootstrap_samples=args.bootstrap_samples,
     )
     metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
     fi_errors = (

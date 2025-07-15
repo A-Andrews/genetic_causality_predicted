@@ -49,9 +49,24 @@ def evaluate(y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, float]:
 
 
 def oversample_minority(
-    X: pd.DataFrame, y: pd.Series
+    X: pd.DataFrame,
+    y: pd.Series,
+    *,
+    random_state: int | None = None,
+    n_samples: int = 1,
 ) -> Tuple[pd.DataFrame, pd.Series]:
-    """Randomly oversample the minority class."""
+    """Randomly oversample the minority class using bootstrapping
+
+    If ``n_samples`` is greater than one, multiple independent bootstrapped
+    datasets are drawn and concatenated to produce a larger, balanced dataset.
+
+    Parameters
+    ----------
+    random_state:
+        Seed for reproducible sampling.
+    n_samples:
+        Number of independent bootstrap samples to draw.
+    """
     df = X.copy()
     df["label"] = y
     counts = df["label"].value_counts()
@@ -68,9 +83,23 @@ def oversample_minority(
         minority_df,
         replace=True,
         n_samples=len(majority_df),
-        random_state=42,
+        random_state=random_state,
     )
-    df_upsampled = pd.concat([majority_df, minority_upsampled])
+    rng = np.random.default_rng(random_state)
+    minority_samples = []
+    for _ in range(n_samples):
+        seed = None if random_state is None else int(rng.integers(0, 1_000_000))
+        minority_sample = resample(
+            minority_df,
+            replace=True,
+            n_samples=len(majority_df),
+            random_state=seed,
+        )
+        sample_df = pd.concat([majority_df, minority_sample])
+        minority_samples.append(minority_sample)
+
+    all_minority = pd.concat(minority_samples, ignore_index=True)
+    df_upsampled = pd.concat([majority_df, all_minority], ignore_index=True)
     return df_upsampled.drop(columns=["label"]), df_upsampled["label"]
 
 
@@ -100,8 +129,9 @@ def compute_permutation_importance(
     Returns
     -------
     Tuple[pd.Series, pd.Series]
-        Mean and standard deviation of the permutation importance for each
-        feature.
+        Mean and standard error of the permutation importance for each
+        feature. The standard error is computed from the standard deviation
+        across ``n_repeats`` permutations.
     """
     logging.info(
         "Permutation importance on data shape %s with label distribution %s",
@@ -140,10 +170,10 @@ def compute_permutation_importance(
         n_jobs=-1,
     )
     imp_mean = pd.Series(result.importances_mean, index=X.columns)
-    imp_std = pd.Series(result.importances_std, index=X.columns)
+    imp_se = pd.Series(result.importances_std / np.sqrt(n_repeats), index=X.columns)
     imp_mean = imp_mean.sort_values(ascending=False)
-    imp_std = imp_std.reindex(imp_mean.index)
-    return imp_mean, imp_std
+    imp_se = imp_se.reindex(imp_mean.index)
+    return imp_mean, imp_se
 
 
 leaky_cols = [
@@ -200,8 +230,28 @@ def chromosome_holdout_cv(
     random_state: int | None = None,
     collect_importance: bool = False,
     return_chrom_metrics: bool = False,
+    bootstrap_samples: int = 1,
+    bootstrap: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
-    """Run chromosome hold-out cross-validation."""
+    """
+    Run chromosome hold-out cross-validation.
+
+    Parameters
+    ----------
+    n_runs:
+        Number of repeated CV runs. Each run uses a different random seed so
+        bootstrapped sampling produces independent training sets when
+        ``bootstrap`` is ``True``.
+    random_state:
+        Base random seed for reproducible runs.
+    bootstrap:
+        If ``True``, oversample the minority class in each training fold using
+        bootstrapping.
+    bootstrap_samples:
+        Number of independent bootstrap samples to draw when ``bootstrap`` is
+        ``True``. Each sample is concatenated with a copy of the majority class
+        to create a larger training set.
+    """
     rng = np.random.default_rng(random_state)
     chromosomes = sorted(data["chrom"].unique())
     run_metrics = []
@@ -216,6 +266,16 @@ def chromosome_holdout_cv(
         for chrom in chromosomes:
             train_mask = data["chrom"] != chrom
             X_train, y_train = X[train_mask], y[train_mask]
+            if bootstrap:
+                fold_seed = (
+                    None if random_state is None else int(rng.integers(0, 1_000_000))
+                )
+                X_train, y_train = oversample_minority(
+                    X_train,
+                    y_train,
+                    random_state=fold_seed,
+                    n_samples=bootstrap_samples,
+                )
             X_val, y_val = X[~train_mask], y[~train_mask]
 
             model = build_model(
@@ -299,14 +359,17 @@ def train_final_model(
     shap_values = explainer.shap_values(X)
     if isinstance(shap_values, list):
         shap_values = shap_values[0]
-    shap_err = pd.Series(abs(shap_values).std(axis=0), index=X.columns)
+    shap_se = pd.Series(
+        abs(shap_values).std(axis=0) / np.sqrt(shap_values.shape[0]),
+        index=X.columns,
+    )
     shap_path = plot_shap_values(
         model,
         X,
         model_name,
         params,
         timestamp,
-        errors=shap_err,
+        errors=shap_se,
     )
 
     perm_imp, perm_err = compute_permutation_importance(model, X, y)
