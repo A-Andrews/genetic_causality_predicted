@@ -4,6 +4,7 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
 
+import numpy as np
 from model_utils import (
     chromosome_holdout_cv,
     compute_feature_importance,
@@ -15,6 +16,7 @@ from pytorch_tabnet.tab_model import TabNetClassifier
 
 import data_consolidation.data_loading as data_loading
 from graphing.graph_importances import plot_feature_importance
+from graphing.graph_model_metrics import plot_chromosome_performance
 from utils import setup_logger
 
 
@@ -99,7 +101,9 @@ def main() -> None:
         )
         return model
 
-    cv_metrics, fi_df = chromosome_holdout_cv(
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    cv_metrics, fi_df, chrom_mean, chrom_err = chromosome_holdout_cv(
         data,
         X,
         y,
@@ -107,11 +111,21 @@ def main() -> None:
         n_runs=args.n_runs,
         random_state=args.random_state,
         collect_importance=True,
+        return_chrom_metrics=True,
     )
     metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
     fi_errors = (
         fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
     )
+
+    if chrom_mean is not None:
+        plot_chromosome_performance(
+            chrom_mean["auprc"],
+            "TabNet",
+            asdict(args),
+            timestamp,
+            errors=None if chrom_err is None else chrom_err["auprc"],
+        )
 
     train_final_model(
         X,
@@ -121,6 +135,7 @@ def main() -> None:
         args,
         metric_errors=metric_errors,
         fi_errors=fi_errors,
+        timestamp=timestamp,
     )
 
 

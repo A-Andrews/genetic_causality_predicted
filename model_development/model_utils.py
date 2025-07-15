@@ -21,7 +21,7 @@ from graphing.graph_importances import (
     plot_feature_importance,
     plot_permutation_importance,
 )
-from graphing.graph_model_metrics import plot_model_metrics
+from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from graphing.graph_shap_values import plot_shap_values
 
 
@@ -199,12 +199,14 @@ def chromosome_holdout_cv(
     n_runs: int = 1,
     random_state: int | None = None,
     collect_importance: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame | None]:
+    return_chrom_metrics: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
     """Run chromosome hold-out cross-validation."""
     rng = np.random.default_rng(random_state)
     chromosomes = sorted(data["chrom"].unique())
     run_metrics = []
     fi_runs = [] if collect_importance else None
+    chrom_runs = [] if return_chrom_metrics else None
     for run in range(n_runs):
         logging.info("Starting CV run %d/%d", run + 1, n_runs)
         run_seed = None if random_state is None else int(rng.integers(0, 1_000_000))
@@ -239,10 +241,12 @@ def chromosome_holdout_cv(
                 (y_val == True).sum(),
             )
 
-        fold_df = pd.DataFrame(fold_metrics)
+        fold_df = pd.DataFrame(fold_metrics, index=chromosomes)
         run_metrics.append(fold_df.mean())
         if collect_importance:
             fi_runs.append(pd.concat(fi_list, axis=1).mean(axis=1))
+        if return_chrom_metrics:
+            chrom_runs.append(fold_df)
 
     metrics_df = pd.DataFrame(run_metrics)
     logging.info(
@@ -252,7 +256,13 @@ def chromosome_holdout_cv(
         metrics_df["auprc"].std() / np.sqrt(n_runs),
     )
     fi_df = pd.concat(fi_runs, axis=1) if collect_importance else None
-    return metrics_df, fi_df
+    chrom_mean = None
+    chrom_err = None
+    if return_chrom_metrics:
+        chrom_concat = pd.concat(chrom_runs, keys=range(n_runs))
+        chrom_mean = chrom_concat.groupby(level=1).mean()
+        chrom_err = chrom_concat.groupby(level=1).std().div(np.sqrt(n_runs))
+    return metrics_df, fi_df, chrom_mean, chrom_err
 
 
 def train_final_model(
@@ -264,6 +274,7 @@ def train_final_model(
     *,
     metric_errors: Dict[str, float] | None = None,
     fi_errors: pd.Series | None = None,
+    timestamp: str | None = None,
 ) -> Any:
     """Train final model and save artefacts."""
     model = build_model(X, y)
@@ -274,7 +285,8 @@ def train_final_model(
         "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
     )
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     fi_path = plot_feature_importance(
         feature_imp, model_name, params, timestamp, errors=fi_errors
