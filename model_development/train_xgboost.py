@@ -25,6 +25,7 @@ class TrainArgs:
     n_runs: int = 1
     bootstrap: bool = False
     bootstrap_samples: int = 1
+    neg_frac: float = 1.0
     compute_shap: bool = False
     compute_permutation: bool = False
 
@@ -70,6 +71,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--n_runs", type=int, default=1)
     parser.add_argument("--bootstrap", type=bool, default=False)
     parser.add_argument("--bootstrap_samples", type=int, default=1)
+    parser.add_argument("--neg_frac", type=float, default=1.0)
     parser.add_argument("--compute_shap", type=bool, default=False)
     parser.add_argument("--compute_permutation", type=bool, default=False)
     return TrainArgs(**vars(parser.parse_args()))
@@ -116,6 +118,7 @@ def main() -> None:
         return_chrom_metrics=True,
         bootstrap=args.bootstrap,
         bootstrap_samples=args.bootstrap_samples,
+        neg_frac=args.neg_frac,
     )
     plot_cv_results(
         cv_metrics,

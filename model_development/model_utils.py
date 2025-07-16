@@ -103,6 +103,47 @@ def oversample_minority(
     return df_upsampled.drop(columns=["label"]), df_upsampled["label"]
 
 
+def downsample_majority(
+    X: pd.DataFrame,
+    y: pd.Series,
+    *,
+    fraction: float,
+    random_state: int | None = None,
+) -> Tuple[pd.DataFrame, pd.Series]:
+    """Randomly downsample the majority (negative) class.
+
+    Parameters
+    ----------
+    fraction:
+        Fraction of majority class samples to keep. Values ``>=1`` disable
+        downsampling.
+    random_state:
+        Seed for reproducible sampling.
+    """
+    if fraction >= 1:
+        return X, y
+
+    df = X.copy()
+    df["label"] = y
+    counts = df["label"].value_counts()
+    if len(counts) < 2:
+        return X, y
+    majority = counts.idxmax()
+    minority = counts.idxmin()
+
+    majority_df = df[df["label"] == majority]
+    minority_df = df[df["label"] == minority]
+    n_samples = int(len(majority_df) * fraction)
+    majority_down = resample(
+        majority_df,
+        replace=False,
+        n_samples=n_samples,
+        random_state=random_state,
+    )
+    df_down = pd.concat([majority_down, minority_df], ignore_index=True)
+    return df_down.drop(columns=["label"]), df_down["label"]
+
+
 def compute_feature_importance(model, feature_names: pd.Index) -> pd.Series:
     """Return feature importance from a fitted model."""
     if hasattr(model, "feature_importances_"):
@@ -234,6 +275,7 @@ def chromosome_holdout_cv(
     return_chrom_metrics: bool = False,
     bootstrap_samples: int = 1,
     bootstrap: bool = False,
+    neg_frac: float = 1.0,
 ) -> Tuple[
     pd.DataFrame,
     pd.DataFrame | None,
@@ -261,6 +303,9 @@ def chromosome_holdout_cv(
         Number of independent bootstrap samples to draw when ``bootstrap`` is
         ``True``. Each sample is concatenated with a copy of the majority class
         to create a larger training set.
+    neg_frac:
+        Fraction of negative examples to keep in each training fold. Values
+        greater than or equal to ``1`` disable downsampling.
     compute_shap:
         If ``True``, compute SHAP values for the validation fold of each
         chromosome and aggregate them across runs.
@@ -286,6 +331,16 @@ def chromosome_holdout_cv(
         for chrom in chromosomes:
             train_mask = data["chrom"] != chrom
             X_train, y_train = X[train_mask], y[train_mask]
+            if neg_frac < 1.0:
+                fold_seed = (
+                    None if random_state is None else int(rng.integers(0, 1_000_000))
+                )
+                X_train, y_train = downsample_majority(
+                    X_train,
+                    y_train,
+                    fraction=neg_frac,
+                    random_state=fold_seed,
+                )
             if bootstrap:
                 fold_seed = (
                     None if random_state is None else int(rng.integers(0, 1_000_000))
