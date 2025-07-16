@@ -62,7 +62,10 @@ def plot_feature_importance(
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    feature_importance.to_csv(os.path.join(out_dir, "feature_importance.csv"))
+    fi_df = feature_importance.to_frame("importance")
+    if errors is not None:
+        fi_df["variance"] = errors
+    fi_df.to_csv(os.path.join(out_dir, "feature_importance.csv"))
 
     with open(os.path.join(out_dir, "params.json"), "w") as f:
         json.dump({"model": model_name, "params": params}, f, indent=2)
@@ -106,7 +109,10 @@ def plot_permutation_importance(
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    perm_importance.to_csv(os.path.join(out_dir, "permutation_importance.csv"))
+    pi_df = perm_importance.to_frame("importance")
+    if errors is not None:
+        pi_df["variance"] = errors
+    pi_df.to_csv(os.path.join(out_dir, "permutation_importance.csv"))
 
     with open(os.path.join(out_dir, "params.json"), "w") as f:
         json.dump({"model": model_name, "params": params}, f, indent=2)

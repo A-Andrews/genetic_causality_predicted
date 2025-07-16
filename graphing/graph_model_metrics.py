@@ -62,7 +62,10 @@ def plot_model_metrics(
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    metrics_series.to_csv(os.path.join(out_dir, "performance_metrics.csv"))
+    metrics_df = metrics_series.to_frame("metric")
+    if errors is not None:
+        metrics_df["variance"] = pd.Series(errors).reindex(metrics_series.index)
+    metrics_df.to_csv(os.path.join(out_dir, "performance_metrics.csv"))
 
     with open(os.path.join(out_dir, "params.json"), "w") as f:
         json.dump({"model": model_name, "params": params}, f, indent=2)
@@ -123,68 +126,10 @@ def plot_chromosome_performance(
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    values.to_csv(os.path.join(out_dir, f"chromosome_{metric}.csv"))
-
-    with open(os.path.join(out_dir, "params.json"), "w") as f:
-        json.dump({"model": model_name, "params": params}, f, indent=2)
-
-    return fig_path
-
-
-def plot_chromosome_performance(
-    chrom_metrics: pd.Series | pd.DataFrame,
-    model_name: str,
-    params: Dict,
-    timestamp: str,
-    *,
-    folder: str = "graphs",
-    metric: str = "auprc",
-    errors: pd.Series | None = None,
-) -> str:
-    """Plot performance for each held-out chromosome.
-
-    Parameters
-    ----------
-    chrom_metrics
-        Either a :class:`~pandas.Series` of metric values indexed by chromosome
-        or a :class:`~pandas.DataFrame` where ``metric`` selects the desired
-        column.
-    metric
-        Metric name to display when ``chrom_metrics`` is a dataframe.
-    errors
-        Optional standard error values for each chromosome.
-    """
-    out_dir = os.path.join(folder, timestamp)
-    os.makedirs(out_dir, exist_ok=True)
-
-    if isinstance(chrom_metrics, pd.DataFrame):
-        values = chrom_metrics[metric]
-    else:
-        values = chrom_metrics
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-    yerr = None
+    values_df = values.to_frame(metric)
     if errors is not None:
-        yerr = errors.reindex(values.index).fillna(0).values
-    ax.bar(
-        values.index.astype(str),
-        values.values,
-        yerr=yerr,
-        color=BAR_COLOURS[0],
-        edgecolor="none",
-        ecolor=EDGE_COLOUR,
-        capsize=3,
-    )
-    ax.set_xlabel("Chromosome")
-    ax.set_ylabel(metric.upper())
-    ax.set_title(f"{model_name} {metric.upper()} by Chromosome")
-    plt.tight_layout()
-
-    fig_path = os.path.join(out_dir, f"chromosome_{metric}.png")
-    fig.savefig(fig_path, dpi=300)
-    plt.close(fig)
-
-    values.to_csv(os.path.join(out_dir, f"chromosome_{metric}.csv"))
+        values_df["variance"] = errors.reindex(values.index)
+    values_df.to_csv(os.path.join(out_dir, f"chromosome_{metric}.csv"))
 
     with open(os.path.join(out_dir, "params.json"), "w") as f:
         json.dump({"model": model_name, "params": params}, f, indent=2)

@@ -70,7 +70,10 @@ def plot_shap_values(
     pd.DataFrame(shap_values, columns=X.columns).to_csv(
         os.path.join(out_dir, "shap_values.csv"), index=False
     )
-    shap_abs.to_csv(os.path.join(out_dir, "shap_importance.csv"))
+    shap_df = shap_abs.to_frame("importance")
+    if errors is not None:
+        shap_df["variance"] = errors.reindex(shap_abs.index)
+    shap_df.to_csv(os.path.join(out_dir, "shap_importance.csv"))
 
     with open(os.path.join(out_dir, "params.json"), "w") as f:
         json.dump({"model": model_name, "params": params}, f, indent=2)

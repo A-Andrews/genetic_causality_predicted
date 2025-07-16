@@ -3,7 +3,7 @@ import logging
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -327,69 +327,3 @@ def chromosome_holdout_cv(
         chrom_mean = chrom_concat.groupby(level=1).mean()
         chrom_err = chrom_concat.groupby(level=1).std().div(np.sqrt(n_runs))
     return metrics_df, fi_df, chrom_mean, chrom_err
-
-
-def train_final_model(
-    X: pd.DataFrame,
-    y: pd.Series,
-    build_model: Callable[..., Any],
-    model_name: str,
-    args: dataclass,
-    *,
-    metric_errors: Dict[str, float] | None = None,
-    fi_errors: pd.Series | None = None,
-    timestamp: str | None = None,
-) -> Any:
-    """Train final model and save artefacts."""
-    model = build_model(X, y)
-    params = asdict(args)
-
-    feature_imp = compute_feature_importance(model, X.columns)
-    logging.info(
-        "Top 10 features by model importance:\n%s", feature_imp.head(10).to_string()
-    )
-
-    if timestamp is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    fi_path = plot_feature_importance(
-        feature_imp, model_name, params, timestamp, errors=fi_errors
-    )
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X)
-    if isinstance(shap_values, list):
-        shap_values = shap_values[0]
-    shap_se = pd.Series(
-        abs(shap_values).std(axis=0) / np.sqrt(shap_values.shape[0]),
-        index=X.columns,
-    )
-    shap_path = plot_shap_values(
-        model,
-        X,
-        model_name,
-        params,
-        timestamp,
-        errors=shap_se,
-    )
-
-    perm_imp, perm_err = compute_permutation_importance(model, X, y)
-
-    logging.info(
-        "Top 10 features by permutation importance:\n%s",
-        perm_imp.head(10).to_string(),
-    )
-    pi_path = plot_permutation_importance(
-        perm_imp, model_name, params, timestamp, errors=perm_err
-    )
-
-    x_pred = X if hasattr(model, "get_booster") else X.values
-    y_pred = model.predict_proba(x_pred)[:, 1]
-    metrics = evaluate(y, y_pred)
-    metrics_path = plot_model_metrics(
-        metrics, model_name, params, timestamp, errors=metric_errors
-    )
-
-    for path in [fi_path, shap_path, pi_path, metrics_path]:
-        save_args(args, os.path.dirname(path))
-
-    return model

@@ -145,17 +145,6 @@ def main() -> None:
             errors=None if chrom_err is None else chrom_err["auprc"],
         )
 
-    train_final_model(
-        X,
-        y,
-        build_model,
-        "TabNet",
-        args,
-        metric_errors=metric_errors,
-        fi_errors=fi_errors,
-        timestamp=timestamp,
-    )
-
 
 if __name__ == "__main__":
     main()

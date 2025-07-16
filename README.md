@@ -102,3 +102,8 @@
 - Ancient_Sequence_Age_Human_Enhancer
 - Human_Enhancer_Villar_Species_Enhancer_Count
 - Human_Promoter_Villar_ExAC
+
+## Model Evaluation
+
+TraitGym scores submissions by averaging cross-validation metrics across
+chromosome hold-out folds. No separate final model is trained.
