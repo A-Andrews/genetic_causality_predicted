@@ -1,25 +1,18 @@
 import argparse
 import logging
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
 from model_utils import (
     chromosome_holdout_cv,
-    compute_feature_importance,
-    compute_permutation_importance,
     prepare_data,
-    save_args,
+    plot_cv_results,
 )
 from pytorch_tabnet.tab_model import TabNetClassifier
 
 import data_consolidation.data_loading as data_loading
-from graphing.graph_importances import (
-    plot_feature_importance,
-    plot_permutation_importance,
-)
-from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from utils import setup_logger
 
 
@@ -136,49 +129,17 @@ def main() -> None:
         bootstrap=args.bootstrap,
         bootstrap_samples=args.bootstrap_samples,
     )
-    metric_errors = cv_metrics.std().div(np.sqrt(len(cv_metrics))).to_dict()
-    fi_errors = (
-        fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
-    )
-    perm_errors = perm_err_df.mean(axis=1) if perm_err_df is not None else None
-
-    plot_dir = "graphs/cv"
-    cv_path = plot_model_metrics(
-        cv_metrics.mean().to_dict(),
-        "TabNet CV",
-        asdict(args),
+    plot_cv_results(
+        cv_metrics,
+        fi_df,
+        chrom_mean,
+        chrom_err,
+        perm_df,
+        perm_err_df,
+        args,
+        "TabNet",
         timestamp,
-        folder=plot_dir,
-        errors=metric_errors,
     )
-    if fi_df is not None:
-        plot_feature_importance(
-            fi_df.mean(axis=1),
-            "TabNet",
-            asdict(args),
-            timestamp,
-            folder=plot_dir,
-            errors=fi_errors,
-        )
-    if perm_df is not None:
-        plot_permutation_importance(
-            perm_df.mean(axis=1),
-            "TabNet",
-            asdict(args),
-            timestamp,
-            folder=plot_dir,
-            errors=perm_errors,
-        )
-    save_args(args, os.path.dirname(cv_path))
-
-    if chrom_mean is not None:
-        plot_chromosome_performance(
-            chrom_mean["auprc"],
-            "TabNet",
-            asdict(args),
-            timestamp,
-            errors=None if chrom_err is None else chrom_err["auprc"],
-        )
 
 
 if __name__ == "__main__":

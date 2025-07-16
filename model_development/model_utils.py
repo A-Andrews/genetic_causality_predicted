@@ -389,3 +389,66 @@ def chromosome_holdout_cv(
     perm_mean_df = pd.concat(perm_runs_mean, axis=1) if compute_permutation else None
     perm_se_df = pd.concat(perm_runs_se, axis=1) if compute_permutation else None
     return metrics_df, fi_df, chrom_mean, chrom_err, shap_df, perm_mean_df, perm_se_df
+
+
+def plot_cv_results(
+    metrics_df: pd.DataFrame,
+    fi_df: pd.DataFrame | None,
+    chrom_mean: pd.DataFrame | None,
+    chrom_err: pd.DataFrame | None,
+    perm_df: pd.DataFrame | None,
+    perm_err_df: pd.DataFrame | None,
+    args,
+    model_name: str,
+    timestamp: str,
+    *,
+    folder: str = "graphs/cv",
+) -> str:
+    """Plot cross-validation results and persist CLI arguments."""
+
+    metric_errors = metrics_df.std().div(np.sqrt(len(metrics_df))).to_dict()
+    fi_errors = (
+        fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
+    )
+    perm_errors = perm_err_df.mean(axis=1) if perm_err_df is not None else None
+
+    cv_path = plot_model_metrics(
+        metrics_df.mean().to_dict(),
+        f"{model_name} CV",
+        asdict(args),
+        timestamp,
+        folder=folder,
+        errors=metric_errors,
+    )
+    if fi_df is not None:
+        plot_feature_importance(
+            fi_df.mean(axis=1),
+            model_name,
+            asdict(args),
+            timestamp,
+            folder=folder,
+            errors=fi_errors,
+        )
+    if perm_df is not None:
+        plot_permutation_importance(
+            perm_df.mean(axis=1),
+            model_name,
+            asdict(args),
+            timestamp,
+            folder=folder,
+            errors=perm_errors,
+        )
+
+    save_args(args, os.path.dirname(cv_path))
+
+    if chrom_mean is not None:
+        plot_chromosome_performance(
+            chrom_mean["auprc"],
+            model_name,
+            asdict(args),
+            timestamp,
+            folder=folder,
+            errors=None if chrom_err is None else chrom_err["auprc"],
+        )
+
+    return cv_path
