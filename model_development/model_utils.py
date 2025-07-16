@@ -229,10 +229,17 @@ def chromosome_holdout_cv(
     n_runs: int = 1,
     random_state: int | None = None,
     collect_importance: bool = False,
+    compute_shap: bool = False,
     return_chrom_metrics: bool = False,
     bootstrap_samples: int = 1,
     bootstrap: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, pd.DataFrame | None]:
+) -> Tuple[
+    pd.DataFrame,
+    pd.DataFrame | None,
+    pd.DataFrame | None,
+    pd.DataFrame | None,
+    pd.DataFrame | None,
+]:
     """
     Run chromosome hold-out cross-validation.
 
@@ -251,11 +258,15 @@ def chromosome_holdout_cv(
         Number of independent bootstrap samples to draw when ``bootstrap`` is
         ``True``. Each sample is concatenated with a copy of the majority class
         to create a larger training set.
+    compute_shap:
+        If ``True``, compute SHAP values for the validation fold of each
+        chromosome and aggregate them across runs.
     """
     rng = np.random.default_rng(random_state)
     chromosomes = sorted(data["chrom"].unique())
     run_metrics = []
     fi_runs = [] if collect_importance else None
+    shap_runs = [] if compute_shap else None
     chrom_runs = [] if return_chrom_metrics else None
     for run in range(n_runs):
         logging.info("Starting CV run %d/%d", run + 1, n_runs)
@@ -263,6 +274,7 @@ def chromosome_holdout_cv(
         fold_metrics = []
         fold_weights = []
         fi_list = [] if collect_importance else None
+        shap_list = [] if compute_shap else None
         for chrom in chromosomes:
             train_mask = data["chrom"] != chrom
             X_train, y_train = X[train_mask], y[train_mask]
@@ -294,6 +306,14 @@ def chromosome_holdout_cv(
             if collect_importance:
                 fi = compute_feature_importance(model, X.columns)
                 fi_list.append(fi)
+            if compute_shap:
+                x_val_shap = X_val if hasattr(model, "get_booster") else X_val.values
+                explainer = shap.TreeExplainer(model)
+                shap_values = explainer.shap_values(x_val_shap)
+                if isinstance(shap_values, list):
+                    shap_values = shap_values[0]
+                shap_mean = pd.Series(np.abs(shap_values).mean(axis=0), index=X.columns)
+                shap_list.append(shap_mean)
             logging.info(
                 "Run %d, Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
                 run + 1,
@@ -308,7 +328,10 @@ def chromosome_holdout_cv(
         weighted_mean = fold_df.mul(fold_sizes, axis=0).sum() / fold_sizes.sum()
         run_metrics.append(weighted_mean)
         if collect_importance:
-            fi_runs.append(pd.concat(fi_list, axis=1).mean(axis=1))
+            fi_df = pd.concat(fi_list, axis=1)
+            fi_df.columns = chromosomes
+            fi_weighted = fi_df.mul(fold_sizes, axis=1).sum(axis=1) / fold_sizes.sum()
+            fi_runs.append(fi_weighted)
         if return_chrom_metrics:
             chrom_runs.append(fold_df)
 
@@ -326,4 +349,5 @@ def chromosome_holdout_cv(
         chrom_concat = pd.concat(chrom_runs, keys=range(n_runs))
         chrom_mean = chrom_concat.groupby(level=1).mean()
         chrom_err = chrom_concat.groupby(level=1).std().div(np.sqrt(n_runs))
-    return metrics_df, fi_df, chrom_mean, chrom_err
+    shap_df = pd.concat(shap_runs, axis=1) if compute_shap else None
+    return metrics_df, fi_df, chrom_mean, chrom_err, shap_df

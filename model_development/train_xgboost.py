@@ -8,14 +8,10 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from model_utils import (
-    chromosome_holdout_cv,
-    prepare_data,
-    save_args,
-    train_final_model,
-)
+from model_utils import chromosome_holdout_cv, prepare_data, save_args
 
 import data_consolidation.data_loading as data_loading
+from graphing.graph_importances import plot_feature_importance
 from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from utils import setup_logger
 
@@ -31,6 +27,7 @@ class TrainArgs:
     n_runs: int = 2
     bootstrap: bool = False
     bootstrap_samples: int = 1
+    compute_shap: bool = False
 
 
 def compute_scale_pos_weight(y: pd.Series) -> float:
@@ -74,6 +71,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--n_runs", type=int, default=2)
     parser.add_argument("--bootstrap", type=bool, default=False)
     parser.add_argument("--bootstrap_samples", type=int, default=1)
+    parser.add_argument("--compute_shap", type=bool, default=False)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -97,7 +95,7 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    cv_metrics, fi_df, chrom_mean, chrom_err = chromosome_holdout_cv(
+    cv_metrics, fi_df, chrom_mean, chrom_err, _ = chromosome_holdout_cv(
         data,
         X,
         y,
@@ -105,6 +103,7 @@ def main() -> None:
         n_runs=args.n_runs,
         random_state=args.random_state,
         collect_importance=True,
+        compute_shap=args.compute_shap,
         return_chrom_metrics=True,
         bootstrap=args.bootstrap,
         bootstrap_samples=args.bootstrap_samples,
@@ -123,6 +122,17 @@ def main() -> None:
         folder=plot_dir,
         errors=metric_errors,
     )
+
+    if fi_df is not None:
+        plot_feature_importance(
+            fi_df.mean(axis=1),
+            "XGBoost",
+            asdict(args),
+            timestamp,
+            folder=plot_dir,
+            errors=fi_errors,
+        )
+
     save_args(args, os.path.dirname(cv_path))
 
     if chrom_mean is not None:
