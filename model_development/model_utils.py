@@ -230,11 +230,14 @@ def chromosome_holdout_cv(
     random_state: int | None = None,
     collect_importance: bool = False,
     compute_shap: bool = False,
+    compute_permutation: bool = False,
     return_chrom_metrics: bool = False,
     bootstrap_samples: int = 1,
     bootstrap: bool = False,
 ) -> Tuple[
     pd.DataFrame,
+    pd.DataFrame | None,
+    pd.DataFrame | None,
     pd.DataFrame | None,
     pd.DataFrame | None,
     pd.DataFrame | None,
@@ -261,12 +264,17 @@ def chromosome_holdout_cv(
     compute_shap:
         If ``True``, compute SHAP values for the validation fold of each
         chromosome and aggregate them across runs.
+    compute_permutation:
+        If ``True``, compute permutation importance for each validation fold
+        and aggregate the results across runs.
     """
     rng = np.random.default_rng(random_state)
     chromosomes = sorted(data["chrom"].unique())
     run_metrics = []
     fi_runs = [] if collect_importance else None
     shap_runs = [] if compute_shap else None
+    perm_runs_mean = [] if compute_permutation else None
+    perm_runs_se = [] if compute_permutation else None
     chrom_runs = [] if return_chrom_metrics else None
     for run in range(n_runs):
         logging.info("Starting CV run %d/%d", run + 1, n_runs)
@@ -314,6 +322,21 @@ def chromosome_holdout_cv(
                     shap_values = shap_values[0]
                 shap_mean = pd.Series(np.abs(shap_values).mean(axis=0), index=X.columns)
                 shap_list.append(shap_mean)
+            if compute_permutation:
+                X_imp, y_imp = (X_val, y_val)
+                if len(np.unique(y_val)) < 2:
+                    logging.warning(
+                        "Chromosome %s validation has a single class; using training data for permutation importance",
+                        chrom,
+                    )
+                    X_imp, y_imp = X_train, y_train
+                pi_mean, pi_se = compute_permutation_importance(
+                    model,
+                    X_imp,
+                    y_imp,
+                )
+                perm_list_mean.append(pi_mean)
+                perm_list_se.append(pi_se)
             logging.info(
                 "Run %d, Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
                 run + 1,
@@ -332,6 +355,19 @@ def chromosome_holdout_cv(
             fi_df.columns = chromosomes
             fi_weighted = fi_df.mul(fold_sizes, axis=1).sum(axis=1) / fold_sizes.sum()
             fi_runs.append(fi_weighted)
+        if compute_permutation:
+            pi_mean_df = pd.concat(perm_list_mean, axis=1)
+            pi_mean_df.columns = chromosomes
+            pi_mean_weighted = (
+                pi_mean_df.mul(fold_sizes, axis=1).sum(axis=1) / fold_sizes.sum()
+            )
+            perm_runs_mean.append(pi_mean_weighted)
+            pi_se_df = pd.concat(perm_list_se, axis=1)
+            pi_se_df.columns = chromosomes
+            pi_se_weighted = (
+                pi_se_df.mul(fold_sizes, axis=1).sum(axis=1) / fold_sizes.sum()
+            )
+            perm_runs_se.append(pi_se_weighted)
         if return_chrom_metrics:
             chrom_runs.append(fold_df)
 
@@ -350,4 +386,6 @@ def chromosome_holdout_cv(
         chrom_mean = chrom_concat.groupby(level=1).mean()
         chrom_err = chrom_concat.groupby(level=1).std().div(np.sqrt(n_runs))
     shap_df = pd.concat(shap_runs, axis=1) if compute_shap else None
-    return metrics_df, fi_df, chrom_mean, chrom_err, shap_df
+    perm_mean_df = pd.concat(perm_runs_mean, axis=1) if compute_permutation else None
+    perm_se_df = pd.concat(perm_runs_se, axis=1) if compute_permutation else None
+    return metrics_df, fi_df, chrom_mean, chrom_err, shap_df, perm_mean_df, perm_se_df

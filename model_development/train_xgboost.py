@@ -11,7 +11,10 @@ import xgboost as xgb
 from model_utils import chromosome_holdout_cv, prepare_data, save_args
 
 import data_consolidation.data_loading as data_loading
-from graphing.graph_importances import plot_feature_importance
+from graphing.graph_importances import (
+    plot_feature_importance,
+    plot_permutation_importance,
+)
 from graphing.graph_model_metrics import plot_chromosome_performance, plot_model_metrics
 from utils import setup_logger
 
@@ -28,6 +31,7 @@ class TrainArgs:
     bootstrap: bool = False
     bootstrap_samples: int = 1
     compute_shap: bool = False
+    compute_permutation: bool = False
 
 
 def compute_scale_pos_weight(y: pd.Series) -> float:
@@ -72,6 +76,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--bootstrap", type=bool, default=False)
     parser.add_argument("--bootstrap_samples", type=int, default=1)
     parser.add_argument("--compute_shap", type=bool, default=False)
+    parser.add_argument("--compute_permutation", type=bool, default=False)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -95,7 +100,15 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    cv_metrics, fi_df, chrom_mean, chrom_err, _ = chromosome_holdout_cv(
+    (
+        cv_metrics,
+        fi_df,
+        chrom_mean,
+        chrom_err,
+        _,
+        perm_df,
+        perm_err_df,
+    ) = chromosome_holdout_cv(
         data,
         X,
         y,
@@ -104,6 +117,7 @@ def main() -> None:
         random_state=args.random_state,
         collect_importance=True,
         compute_shap=args.compute_shap,
+        compute_permutation=args.compute_permutation,
         return_chrom_metrics=True,
         bootstrap=args.bootstrap,
         bootstrap_samples=args.bootstrap_samples,
@@ -112,6 +126,7 @@ def main() -> None:
     fi_errors = (
         fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
     )
+    perm_errors = perm_err_df.mean(axis=1) if perm_err_df is not None else None
 
     plot_dir = "graphs/cv"
     cv_path = plot_model_metrics(
@@ -132,7 +147,16 @@ def main() -> None:
             folder=plot_dir,
             errors=fi_errors,
         )
-
+    if perm_df is not None:
+        plot_permutation_importance(
+            perm_df.mean(axis=1),
+            "XGBoost",
+            asdict(args),
+            timestamp,
+            folder=plot_dir,
+            errors=perm_errors,
+        )
+        
     save_args(args, os.path.dirname(cv_path))
 
     if chrom_mean is not None:
