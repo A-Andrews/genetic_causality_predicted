@@ -406,10 +406,16 @@ def plot_cv_results(
 ) -> str:
     """Plot cross-validation results and persist CLI arguments."""
 
-    metric_errors = metrics_df.std().div(np.sqrt(len(metrics_df))).to_dict()
-    fi_errors = (
-        fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1])) if fi_df is not None else None
-    )
+    if len(metrics_df) > 1:
+        metric_errors = metrics_df.std().div(np.sqrt(len(metrics_df))).to_dict()
+    elif chrom_mean is not None:
+        metric_errors = chrom_mean.std().div(np.sqrt(len(chrom_mean))).to_dict()
+    else:
+        metric_errors = {m: np.nan for m in metrics_df.columns}
+
+    fi_errors = None
+    if fi_df is not None and fi_df.shape[1] > 1:
+        fi_errors = fi_df.std(axis=1).div(np.sqrt(fi_df.shape[1]))
     perm_errors = perm_err_df.mean(axis=1) if perm_err_df is not None else None
 
     cv_path = plot_model_metrics(
