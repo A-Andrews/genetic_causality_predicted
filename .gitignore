@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 logs
 graphs
+variant_collection
 
 # C extensions
 *.so

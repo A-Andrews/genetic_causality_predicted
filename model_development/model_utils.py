@@ -328,6 +328,8 @@ def chromosome_holdout_cv(
         fold_weights = []
         fi_list = [] if collect_importance else None
         shap_list = [] if compute_shap else None
+        perm_list_mean = [] if compute_permutation else None
+        perm_list_se = [] if compute_permutation else None
         for chrom in chromosomes:
             train_mask = data["chrom"] != chrom
             X_train, y_train = X[train_mask], y[train_mask]
