@@ -5,6 +5,7 @@ __pycache__/
 logs
 graphs
 variant_collection
+catboost_info
 
 # C extensions
 *.so

@@ -1,9 +1,81 @@
+import gzip
 import logging
 import os
+from pathlib import Path
 
 import pandas as pd
 
-from settings import BASELINELD_PATH, GRAPH_ANNOTATIONS_PATH, PLINK_PATH, TRAITGYM_PATH
+from settings import (
+    BASELINELD_PATH,
+    GRAPH_ANNOTATIONS_PATH,
+    PLINK_PATH,
+    SNP_BINARY_PATH,
+    TRAITGYM_PATH,
+)
+
+
+def load_trait_directory(dir_path):
+    """
+    Build a SNP × trait presence/absence matrix from every *.binary.gz file
+    found directly inside `dir_path`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns:
+            chrom  – chromosome without the 'chr' prefix (int where possible)
+            pos    – base-pair position (int)
+            <trait1>, <trait2>, … – 1 if SNP is present in that trait file
+    """
+    dir_path = Path(dir_path)
+    file_paths = sorted(fp for fp in dir_path.glob("*.binary.gz") if fp.is_file())
+
+    if not file_paths:
+        raise FileNotFoundError(f"No .binary.gz files found in {dir_path}")
+
+    trait_to_snps = {}
+    trait_order = []
+
+    # 1) Read each file and collect its SNPs
+    for fp in file_paths:
+        trait = fp.stem.replace(".binary", "")  # drop .binary if present
+        trait_order.append(trait)
+        snp_set = set()
+
+        with gzip.open(fp, "rt") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                _, chrom_raw, pos_str, *_ = line.rstrip("\n").split("\t")
+
+                chrom = chrom_raw.lower().removeprefix("chr")
+                pos = int(pos_str)
+                snp_set.add((chrom, pos))
+
+        trait_to_snps[trait] = snp_set
+
+    # 2) Master list of all unique (chrom, pos) pairs
+    def sort_key(item):
+        chrom, pos = item
+        return (0, int(chrom)) if chrom.isdigit() else (1, chrom), pos
+
+    all_snps = sorted(
+        {snp for snps in trait_to_snps.values() for snp in snps},
+        key=sort_key,
+    )
+
+    # 3) Assemble the DataFrame
+    data = {
+        "chrom": [c for c, _ in all_snps],
+        "pos": [p for _, p in all_snps],
+    }
+    for trait in trait_order:
+        present = trait_to_snps[trait]
+        data[trait] = [1 if snp in present else 0 for snp in all_snps]
+
+    df = pd.DataFrame(data)
+    df["chrom"] = pd.to_numeric(df["chrom"], errors="ignore")  # ints where possible
+    return df
 
 
 def load_graph_annotations(chromosome):
@@ -169,6 +241,11 @@ def load_all_chromosomes(chromosomes=None, include_graph=False):
 
     combined_df = pd.concat(all_dfs, ignore_index=True)
     logging.info(f"Combined dataframe shape: {combined_df.shape}")
+
+    per_snp_binaries = load_trait_directory(SNP_BINARY_PATH)
+    logging.info(f"Loaded SNP binary data with shape: {per_snp_binaries.shape}")
+    logging.info("Columns in per_snp_binaries: %s", per_snp_binaries.columns.tolist())
+    logging.info("Example data from per_snp_binaries:\n%s", per_snp_binaries.head())
 
     convert_columns = {
         "chrom": int,

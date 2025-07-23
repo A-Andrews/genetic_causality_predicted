@@ -5,6 +5,7 @@
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
+#SBATCH --mem=64G
 
 echo "------------------------------------------------"
 echo "Run on host: "`hostname`
