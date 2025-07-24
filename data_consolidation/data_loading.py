@@ -17,15 +17,16 @@ from settings import (
 def load_trait_directory(dir_path):
     """
     Build a SNP × trait presence/absence matrix from every *.binary.gz file
-    found directly inside `dir_path`.
+    found directly inside `dir_path`. The first column of each file is ignored
+    since it only contains a variant identifier.
 
     Returns
     -------
     pandas.DataFrame
         Columns:
-            chrom  – chromosome without the 'chr' prefix (int where possible)
-            pos    – base-pair position (int)
-            <trait1>, <trait2>, … – 1 if SNP is present in that trait file
+            chrom  – chromosome without the 'chr' prefix (categorical)
+            pos    – base-pair position (int32)
+            <trait1>, <trait2>, … – boolean flag indicating SNP presence
     """
     dir_path = Path(dir_path)
     file_paths = sorted(fp for fp in dir_path.glob("*.binary.gz") if fp.is_file())
@@ -46,11 +47,19 @@ def load_trait_directory(dir_path):
             for line in f:
                 if not line.strip():
                     continue
-                _, chrom_raw, pos_str, *_ = line.rstrip("\n").split("\t")
+                # skip the first column entirely to reduce memory usage
+                parts = line.rstrip("\n").split("\t", 3)
+                if len(parts) < 3:
+                    continue
+                chrom_raw = parts[1]
+                pos_str = parts[2]
 
                 chrom = chrom_raw.lower().removeprefix("chr")
                 pos = int(pos_str)
                 snp_set.add((chrom, pos))
+        logging.info(
+            f"Loaded {len(snp_set)} SNPs for trait '{trait}' from file {fp}"
+        )
 
         trait_to_snps[trait] = snp_set
 
@@ -71,10 +80,15 @@ def load_trait_directory(dir_path):
     }
     for trait in trait_order:
         present = trait_to_snps[trait]
-        data[trait] = [1 if snp in present else 0 for snp in all_snps]
+        data[trait] = [snp in present for snp in all_snps]
 
     df = pd.DataFrame(data)
-    df["chrom"] = pd.to_numeric(df["chrom"], errors="ignore")  # ints where possible
+    df["chrom"] = pd.Categorical(df["chrom"])
+    df["pos"] = df["pos"].astype("int32")
+
+    # convert dense boolean columns to sparse representation
+    for trait in trait_order:
+        df[trait] = pd.Series(df[trait], dtype=pd.SparseDtype("bool", False))
     return df
 
 
