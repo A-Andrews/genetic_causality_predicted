@@ -29,6 +29,7 @@ class TrainArgs:
     compute_shap: bool = False
     compute_permutation: bool = False
     use_graph_annotations: bool = False
+    use_per_snp: bool = False
 
 
 def compute_scale_pos_weight(y: pd.Series) -> float:
@@ -76,6 +77,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--compute_shap", type=bool, default=False)
     parser.add_argument("--compute_permutation", type=bool, default=False)
     parser.add_argument("--use_graph_annotations", type=bool, default=False)
+    parser.add_argument("--use_per_snp", type=bool, default=False)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -84,7 +86,10 @@ def main() -> None:
     setup_logger(seed=args.random_state)
     logging.info("Training arguments: %s", args)
 
-    data = data_loading.load_all_chromosomes(include_graph=args.use_graph_annotations)
+    data = data_loading.load_all_chromosomes(
+        include_graph=args.use_graph_annotations,
+        include_per_snp=args.use_per_snp,
+    )
 
     X, y = prepare_data(data)
 

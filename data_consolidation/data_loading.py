@@ -13,6 +13,38 @@ from settings import (
     TRAITGYM_PATH,
 )
 
+def _load_single_trait_file(file_path, trait):
+    """Load a single ``*.binary.gz`` file as a dataframe.
+
+    Parameters
+    ----------
+    file_path : path-like
+        Path to the gzipped file.
+    trait : str
+        Name of the trait being loaded.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with columns ``chrom`` and ``pos`` plus a boolean column
+        for ``trait`` indicating SNP presence.
+    """
+    with gzip.open(file_path, "rt") as fh:
+        df = pd.read_csv(
+            fh,
+            sep="\t",
+            usecols=[1, 2],
+            header=None,
+            names=["chrom", "pos"],
+        )
+
+    df.dropna(inplace=True)
+    df["chrom"] = df["chrom"].astype(str).str.lower().str.replace("chr", "", regex=False)
+    df["pos"] = df["pos"].astype("int32")
+    df.drop_duplicates(subset=["chrom", "pos"], inplace=True)
+    df[trait] = True
+    return df
+
 
 def load_trait_directory(dir_path):
     """
@@ -34,62 +66,39 @@ def load_trait_directory(dir_path):
     if not file_paths:
         raise FileNotFoundError(f"No .binary.gz files found in {dir_path}")
 
-    trait_to_snps = {}
+    master_df = None
     trait_order = []
 
-    # 1) Read each file and collect its SNPs
     for fp in file_paths:
-        trait = fp.stem.replace(".binary", "")  # drop .binary if present
+        trait = fp.stem.replace(".binary", "")
         trait_order.append(trait)
-        snp_set = set()
+        df = _load_single_trait_file(fp, trait)
+        logging.info(f"Loaded {len(df)} SNPs for trait '{trait}' from file {fp}")
+        if master_df is None:
+            master_df = df
+        else:
+            master_df = pd.merge(master_df, df, on=["chrom", "pos"], how="outer")
+            master_df.fillna(False, inplace=True)
+    if master_df is None:
+        return pd.DataFrame(columns=["chrom", "pos"])
 
-        with gzip.open(fp, "rt") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                # skip the first column entirely to reduce memory usage
-                parts = line.rstrip("\n").split("\t", 3)
-                if len(parts) < 3:
-                    continue
-                chrom_raw = parts[1]
-                pos_str = parts[2]
-
-                chrom = chrom_raw.lower().removeprefix("chr")
-                pos = int(pos_str)
-                snp_set.add((chrom, pos))
-        logging.info(
-            f"Loaded {len(snp_set)} SNPs for trait '{trait}' from file {fp}"
-        )
-
-        trait_to_snps[trait] = snp_set
-
-    # 2) Master list of all unique (chrom, pos) pairs
-    def sort_key(item):
-        chrom, pos = item
-        return (0, int(chrom)) if chrom.isdigit() else (1, chrom), pos
-
-    all_snps = sorted(
-        {snp for snps in trait_to_snps.values() for snp in snps},
-        key=sort_key,
-    )
-
-    # 3) Assemble the DataFrame
-    data = {
-        "chrom": [c for c, _ in all_snps],
-        "pos": [p for _, p in all_snps],
-    }
     for trait in trait_order:
-        present = trait_to_snps[trait]
-        data[trait] = [snp in present for snp in all_snps]
+        master_df[trait] = master_df[trait].astype(bool)
 
-    df = pd.DataFrame(data)
-    df["chrom"] = pd.Categorical(df["chrom"])
-    df["pos"] = df["pos"].astype("int32")
+    master_df["pos"] = master_df["pos"].astype("int32")
 
-    # convert dense boolean columns to sparse representation
+    chrom_numeric = pd.to_numeric(master_df["chrom"], errors="coerce")
+    master_df["_chrom_numeric"] = chrom_numeric
+    master_df.sort_values(by=["_chrom_numeric", "chrom", "pos"], inplace=True)
+    master_df.drop(columns="_chrom_numeric", inplace=True)
+    master_df["chrom"] = pd.Categorical(master_df["chrom"])
+
     for trait in trait_order:
-        df[trait] = pd.Series(df[trait], dtype=pd.SparseDtype("bool", False))
-    return df
+        master_df[trait] = pd.Series(master_df[trait], dtype=pd.SparseDtype("bool", False))
+
+    master_df.reset_index(drop=True, inplace=True)
+
+    return master_df
 
 
 def load_graph_annotations(chromosome):
@@ -230,7 +239,11 @@ def load_data(chromosome, include_graph=False):
     return merged_traitgym_data
 
 
-def load_all_chromosomes(chromosomes=None, include_graph=False):
+def load_all_chromosomes(
+    chromosomes=None,
+    include_graph=False,
+    include_per_snp=False,
+):
     """Load and combine data for multiple chromosomes.
 
     Parameters
@@ -256,10 +269,39 @@ def load_all_chromosomes(chromosomes=None, include_graph=False):
     combined_df = pd.concat(all_dfs, ignore_index=True)
     logging.info(f"Combined dataframe shape: {combined_df.shape}")
 
-    per_snp_binaries = load_trait_directory(SNP_BINARY_PATH)
-    logging.info(f"Loaded SNP binary data with shape: {per_snp_binaries.shape}")
-    logging.info("Columns in per_snp_binaries: %s", per_snp_binaries.columns.tolist())
-    logging.info("Example data from per_snp_binaries:\n%s", per_snp_binaries.head())
+    if include_per_snp:
+        per_snp_binaries = load_trait_directory(SNP_BINARY_PATH)
+        logging.info(
+            f"Loaded SNP binary data with shape: {per_snp_binaries.shape}"
+        )
+
+        baseline_cols = set(combined_df.columns) - {
+            "chrom",
+            "pos",
+            "ref",
+            "alt",
+            "SNP",
+            "trait",
+            "label",
+        }
+        drop_cols = [c for c in baseline_cols if c not in per_snp_binaries.columns]
+        if drop_cols:
+            logging.info("Dropping %d baselineLD columns", len(drop_cols))
+            combined_df = combined_df.drop(columns=drop_cols)
+
+        before_rows = len(combined_df)
+        combined_df = pd.merge(
+            combined_df,
+            per_snp_binaries,
+            on=["chrom", "pos"],
+            how="inner",
+        )
+        after_rows = len(combined_df)
+        logging.info(
+            "Merged per_snp data; lost %s / %s rows",
+            before_rows - after_rows,
+            before_rows,
+        )
 
     convert_columns = {
         "chrom": int,

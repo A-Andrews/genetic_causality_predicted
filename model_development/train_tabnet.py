@@ -32,6 +32,7 @@ class TrainArgs:
     neg_frac: float = 1.0
     compute_shap: bool = False
     compute_permutation: bool = False
+    use_per_snp: bool = False
 
 
 def parse_args() -> TrainArgs:
@@ -52,6 +53,7 @@ def parse_args() -> TrainArgs:
     parser.add_argument("--neg_frac", type=float, default=1.0)
     parser.add_argument("--compute_shap", type=bool, default=False)
     parser.add_argument("--compute_permutation", type=bool, default=False)
+    parser.add_argument("--use_per_snp", type=bool, default=False)
     return TrainArgs(**vars(parser.parse_args()))
 
 
@@ -60,7 +62,7 @@ def main() -> None:
     setup_logger(seed=args.random_state)
     logging.info("Training arguments: %s", args)
 
-    data = data_loading.load_all_chromosomes()
+    data = data_loading.load_all_chromosomes(include_per_snp=args.use_per_snp)
     X, y = prepare_data(data)
     categorical_cols = X.select_dtypes(include=["category"]).columns.tolist()
     cat_idxs = [X.columns.get_loc(col) for col in categorical_cols]
