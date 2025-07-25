@@ -219,23 +219,51 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
     bim_file = load_bim_file(
         os.path.join(PLINK_PATH, f"1000G.EUR.hg38.{chromosome}.bim")
     )
-    merged_data = merge_ld_bim(ld_annotations, bim_file)
 
     if per_snp_df is not None:
-        before_rows = len(merged_data)
-        merged_data = pd.merge(
-            merged_data,
+        # Rename chromosome and position columns for consistency
+        ld_ann = ld_annotations.rename(columns={"CHR": "chrom", "BP": "pos"})
+
+        # Keep only LD annotation columns that also appear in per_snp_df
+        common_cols = [c for c in ld_ann.columns if c in per_snp_df.columns]
+        ld_ann = ld_ann[["chrom", "pos"] + common_cols]
+
+        # Merge LD annotations with the per_snp dataframe first
+        before_rows = len(per_snp_df)
+        per_snp_df = pd.merge(
             per_snp_df,
+            ld_ann,
             on=["chrom", "pos"],
             how="inner",
         )
-    after_rows = len(merged_data)
-    logging.info(
-        "Merged per_snp data for chromosome %s; lost %s / %s rows",
-        chromosome,
-        before_rows - after_rows,
-        before_rows,
-    )
+        after_rows = len(per_snp_df)
+        logging.info(
+            "Merged LD annotations into per_snp for chromosome %s; lost %s / %s rows",
+            chromosome,
+            before_rows - after_rows,
+            before_rows,
+        )
+
+        # Prepare bim file columns for merging on chrom and pos
+        bim_file["chrom"] = bim_file["chrom"].astype(str)
+        bim_file["pos"] = bim_file["pos"].astype(int)
+
+        before_rows = len(per_snp_df)
+        merged_data = pd.merge(
+            per_snp_df,
+            bim_file,
+            on=["chrom", "pos"],
+            how="inner",
+        )
+        after_rows = len(merged_data)
+        logging.info(
+            "Merged per_snp and bim for chromosome %s; lost %s / %s rows",
+            chromosome,
+            before_rows - after_rows,
+            before_rows,
+        )
+    else:
+        merged_data = merge_ld_bim(ld_annotations, bim_file)
     
     if include_graph:
         graph_annotations = load_graph_annotations(chromosome)
