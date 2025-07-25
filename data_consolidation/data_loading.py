@@ -228,6 +228,21 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
         common_cols = [c for c in ld_ann.columns if c in per_snp_df.columns]
         ld_ann = ld_ann[["chrom", "pos"] + common_cols]
 
+         # Ensure there are no duplicated column labels before merging
+        if per_snp_df.columns.duplicated().any():
+            dup_cols = per_snp_df.columns[per_snp_df.columns.duplicated()].tolist()
+            logging.warning(
+                "Dropping duplicate columns %s from per_snp_df before merge", dup_cols
+            )
+            per_snp_df = per_snp_df.loc[:, ~per_snp_df.columns.duplicated()]
+
+        if ld_ann.columns.duplicated().any():
+            dup_cols = ld_ann.columns[ld_ann.columns.duplicated()].tolist()
+            logging.warning(
+                "Dropping duplicate columns %s from ld_ann before merge", dup_cols
+            )
+            ld_ann = ld_ann.loc[:, ~ld_ann.columns.duplicated()]
+
         # Merge LD annotations with the per_snp dataframe first
         before_rows = len(per_snp_df)
         per_snp_df = pd.merge(
