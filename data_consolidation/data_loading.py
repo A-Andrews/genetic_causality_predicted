@@ -194,11 +194,24 @@ def merge_varient_features(traitgym_df, annotation_df):
     return merged_df
 
 
-def load_data(chromosome, include_graph=False):
+def load_data(chromosome, include_graph=False, per_snp_df=None):
     """
     Load data for a specific chromosome.
 
-    Returns:
+    Parameters
+    ----------
+    chromosome : int or str
+        Chromosome identifier.
+    include_graph : bool, optional
+        Whether to include graph annotations. Defaults to ``False``.
+    per_snp_df : pandas.DataFrame or None, optional
+        Optional dataframe containing per-SNP binaries for this chromosome.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Dataframe with baseline annotations (and optionally graph and
+        per-SNP features) for the requested chromosome.
     """
     ld_annotations = load_baselineLD_annotations(
         os.path.join(BASELINELD_PATH, f"baselineLD.{chromosome}.annot.gz")
@@ -208,35 +221,27 @@ def load_data(chromosome, include_graph=False):
     )
     merged_data = merge_ld_bim(ld_annotations, bim_file)
 
-    traitgym_data = load_traitgym_data(
-        os.path.join(TRAITGYM_PATH, "complex_traits_all", f"test.parquet"),
-        split="test",
+    if per_snp_df is not None:
+        before_rows = len(merged_data)
+        merged_data = pd.merge(
+            merged_data,
+            per_snp_df,
+            on=["chrom", "pos"],
+            how="inner",
+        )
+    after_rows = len(merged_data)
+    logging.info(
+        "Merged per_snp data for chromosome %s; lost %s / %s rows",
+        chromosome,
+        before_rows - after_rows,
+        before_rows,
     )
-    merged_traitgym_data = merge_varient_features(traitgym_data, merged_data)
+    
     if include_graph:
         graph_annotations = load_graph_annotations(chromosome)
-        merged_traitgym_data = merge_graph_annotations(
-            graph_annotations, merged_traitgym_data
-        )
-    convert_columns = {
-        "chrom": int,
-        "ref": "category",
-        "alt": "category",
-        "OMIM": "category",
-        "consequence": "category",
-        "SNP": "category",
-        "trait": "category",
-    }
-    for col, dtype in convert_columns.items():
-        if col in merged_traitgym_data.columns:
-            merged_traitgym_data[col] = merged_traitgym_data[col].astype(dtype)
+        merged_data = merge_graph_annotations(graph_annotations, merged_data)
 
-    if len(merged_traitgym_data.select_dtypes(include="object").columns.tolist()) > 0:
-        logging.warning(
-            f"Object columns found in merged_traitgym_data: {merged_traitgym_data.select_dtypes(include='object').columns.tolist()}"
-        )
-
-    return merged_traitgym_data
+    return merged_data
 
 
 def load_all_chromosomes(
@@ -261,13 +266,7 @@ def load_all_chromosomes(
     if chromosomes is None:
         chromosomes = list(range(1, 23))
 
-    all_dfs = []
-    for chrom in chromosomes:
-        logging.info(f"Loading chromosome {chrom}")
-        all_dfs.append(load_data(chromosome=chrom, include_graph=include_graph))
-
-    combined_df = pd.concat(all_dfs, ignore_index=True)
-    logging.info(f"Combined dataframe shape: {combined_df.shape}")
+    per_snp_binaries = None
 
     if include_per_snp:
         per_snp_binaries = load_trait_directory(SNP_BINARY_PATH)
@@ -275,33 +274,32 @@ def load_all_chromosomes(
             f"Loaded SNP binary data with shape: {per_snp_binaries.shape}"
         )
 
-        baseline_cols = set(combined_df.columns) - {
-            "chrom",
-            "pos",
-            "ref",
-            "alt",
-            "SNP",
-            "trait",
-            "label",
-        }
-        drop_cols = [c for c in baseline_cols if c not in per_snp_binaries.columns]
-        if drop_cols:
-            logging.info("Dropping %d baselineLD columns", len(drop_cols))
-            combined_df = combined_df.drop(columns=drop_cols)
+        annotation_dfs = []
+    for chrom in chromosomes:
+        logging.info(f"Loading chromosome {chrom}")
+        chrom_snps = None
+        if per_snp_binaries is not None:
+            chrom_snps = per_snp_binaries[
+                per_snp_binaries["chrom"].astype(str) == str(chrom)
+            ]
+        annotation_dfs.append(
+            load_data(
+                chromosome=chrom,
+                include_graph=include_graph,
+                per_snp_df=chrom_snps,
+            )
+        )
 
-        before_rows = len(combined_df)
-        combined_df = pd.merge(
-            combined_df,
-            per_snp_binaries,
-            on=["chrom", "pos"],
-            how="inner",
-        )
-        after_rows = len(combined_df)
-        logging.info(
-            "Merged per_snp data; lost %s / %s rows",
-            before_rows - after_rows,
-            before_rows,
-        )
+    combined_annotations = pd.concat(annotation_dfs, ignore_index=True)
+    logging.info(
+        f"Combined annotation dataframe shape: {combined_annotations.shape}"
+    )
+
+    traitgym_data = load_traitgym_data(
+        os.path.join(TRAITGYM_PATH, "complex_traits_all", "test.parquet"),
+        split="test",
+    )
+    combined_df = merge_varient_features(traitgym_data, combined_annotations)
 
     convert_columns = {
         "chrom": int,
