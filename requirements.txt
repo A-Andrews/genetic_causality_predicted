@@ -25,7 +25,6 @@ fsspec==2025.3.0
 -e git+https://github.com/A-Andrews/genetic_causality_predicted.git@d49e284b1481262f541a9c31e354d75f117ec77b#egg=genetic_causality_predicted
 gitdb==4.0.12
 GitPython==3.1.45
-gpn==0.6
 graphviz==0.21
 hf-xet==1.1.5
 huggingface-hub==0.34.2
