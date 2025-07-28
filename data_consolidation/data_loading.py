@@ -245,11 +245,16 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
 
         # Merge LD annotations with the per_snp dataframe first
         before_rows = len(per_snp_df)
-        per_snp_df = pd.merge(
-            per_snp_df,
-            ld_ann,
-            on=["chrom", "pos"],
-            how="inner",
+        per_snp_df = (
+            pd.concat(
+                [
+                    per_snp_df.set_index(["chrom", "pos"]),
+                    ld_ann.set_index(["chrom", "pos"]),
+                ],
+                axis=1,
+                join="inner",
+            )
+            .reset_index()
         )
         after_rows = len(per_snp_df)
         logging.info(
@@ -317,7 +322,7 @@ def load_all_chromosomes(
             f"Loaded SNP binary data with shape: {per_snp_binaries.shape}"
         )
 
-        annotation_dfs = []
+    annotation_dfs = []
     for chrom in chromosomes:
         logging.info(f"Loading chromosome {chrom}")
         chrom_snps = None
