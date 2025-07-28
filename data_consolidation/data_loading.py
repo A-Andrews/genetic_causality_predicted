@@ -194,7 +194,7 @@ def merge_varient_features(traitgym_df, annotation_df):
     return merged_df
 
 
-def load_data(chromosome, include_graph=False, per_snp_df=None):
+def load_data(chromosome, include_graph=False, per_snp_df=None, *, use_per_snp=False):
     """
     Load data for a specific chromosome.
 
@@ -206,6 +206,9 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
         Whether to include graph annotations. Defaults to ``False``.
     per_snp_df : pandas.DataFrame or None, optional
         Optional dataframe containing per-SNP binaries for this chromosome.
+    use_per_snp : bool, optional
+        If ``True`` use only per-SNP binaries. When ``False`` use LD
+        annotations. Defaults to ``False``.
 
     Returns
     -------
@@ -213,56 +216,13 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
         Dataframe with baseline annotations (and optionally graph and
         per-SNP features) for the requested chromosome.
     """
-    ld_annotations = load_baselineLD_annotations(
-        os.path.join(BASELINELD_PATH, f"baselineLD.{chromosome}.annot.gz")
-    )
     bim_file = load_bim_file(
         os.path.join(PLINK_PATH, f"1000G.EUR.hg38.{chromosome}.bim")
     )
 
-    if per_snp_df is not None:
-        # Rename chromosome and position columns for consistency
-        ld_ann = ld_annotations.rename(columns={"CHR": "chrom", "BP": "pos"})
-
-        # Keep only LD annotation columns that also appear in per_snp_df
-        common_cols = [c for c in ld_ann.columns if c in per_snp_df.columns]
-        ld_ann = ld_ann[["chrom", "pos"] + common_cols]
-
-         # Ensure there are no duplicated column labels before merging
-        if per_snp_df.columns.duplicated().any():
-            dup_cols = per_snp_df.columns[per_snp_df.columns.duplicated()].tolist()
-            logging.warning(
-                "Dropping duplicate columns %s from per_snp_df before merge", dup_cols
-            )
-            per_snp_df = per_snp_df.loc[:, ~per_snp_df.columns.duplicated()]
-
-        if ld_ann.columns.duplicated().any():
-            dup_cols = ld_ann.columns[ld_ann.columns.duplicated()].tolist()
-            logging.warning(
-                "Dropping duplicate columns %s from ld_ann before merge", dup_cols
-            )
-            ld_ann = ld_ann.loc[:, ~ld_ann.columns.duplicated()]
-
-        # Merge LD annotations with the per_snp dataframe first
-        before_rows = len(per_snp_df)
-        per_snp_df = (
-            pd.concat(
-                [
-                    per_snp_df.set_index(["chrom", "pos"]),
-                    ld_ann.set_index(["chrom", "pos"]),
-                ],
-                axis=1,
-                join="inner",
-            )
-            .reset_index()
-        )
-        after_rows = len(per_snp_df)
-        logging.info(
-            "Merged LD annotations into per_snp for chromosome %s; lost %s / %s rows",
-            chromosome,
-            before_rows - after_rows,
-            before_rows,
-        )
+    if use_per_snp:
+        if per_snp_df is None:
+            raise ValueError("per_snp_df must be provided when use_per_snp is True")
 
         # Prepare bim file columns for merging on chrom and pos
         bim_file["chrom"] = bim_file["chrom"].astype(str)
@@ -283,6 +243,9 @@ def load_data(chromosome, include_graph=False, per_snp_df=None):
             before_rows,
         )
     else:
+        ld_annotations = load_baselineLD_annotations(
+            os.path.join(BASELINELD_PATH, f"baselineLD.{chromosome}.annot.gz")
+        )
         merged_data = merge_ld_bim(ld_annotations, bim_file)
     
     if include_graph:
@@ -305,6 +268,8 @@ def load_all_chromosomes(
         Chromosome identifiers to load. Defaults to ``range(1, 23)``.
     include_graph : bool, optional
         Whether to include graph annotations in the loaded data. Defaults to ``False``.
+    include_per_snp : bool, optional
+        If ``True`` load per-SNP binaries instead of LD annotations.
 
     Returns
     -------
@@ -335,6 +300,7 @@ def load_all_chromosomes(
                 chromosome=chrom,
                 include_graph=include_graph,
                 per_snp_df=chrom_snps,
+                use_per_snp=include_per_snp,
             )
         )
 
