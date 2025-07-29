@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from datasets import load_dataset
 from sklearn.metrics import average_precision_score
+from torch.utils.data import DataLoader
 from transformers import AutoModel
 
 from data_consolidation.load_gpn import TGMSA
@@ -17,6 +18,9 @@ tg = load_dataset(
 
 train = TGMSA(tg.filter(lambda r: r["chrom"] != "21"))  # leave-chr-21-out
 val = TGMSA(tg.filter(lambda r: r["chrom"] == "21"))
+
+train_loader = DataLoader(train, batch_size=32, shuffle=True, drop_last=True)
+val_loader = DataLoader(val, batch_size=32)
 
 enc = AutoModel.from_pretrained("songlab/gpn-msa-sapiens")  # 86 M params
 for p in enc.parameters():  # freeze for warm-up
