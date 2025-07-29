@@ -19,13 +19,25 @@ def slice_window(row):
     # Older versions of the MSA may yield arrays of byte strings; convert
     # to integer indices expected by the model.
     if np.issubdtype(X.dtype, np.bytes_):
-        X = np.vectorize(lambda b: VOCAB[b.decode("ascii")])(X)
+        X = np.vectorize(lambda b: VOCAB[b.decode("ascii").upper()])(X)
 
-    if X[64, 0] == 4:  # human gap at SNV
+    # Convert the per-species representation to the single-token encoding
+    # expected by the pretrained RoFormer model.  Newer versions of
+    # ``GenomeMSA`` expose an ``encode`` method for this purpose.  If an
+    # older version is installed, the fallback simply flattens the column
+    # into a base-5 integer.
+    if hasattr(msa, "encode"):
+        tokens = msa.encode(X)
+    else:
+        base = np.power(5, np.arange(X.shape[1]), dtype=object)
+        tokens = (X.astype(object) * base).sum(axis=1).astype(object)
+
+    gap_token = getattr(msa, "gap_token", 4)
+    if tokens[64] == gap_token:  # human gap at SNV
         return None  # skip
-    ref, alt = X.copy(), X.copy()
-    ref[64, 0], alt[64, 0] = VOCAB[row["ref"]], VOCAB[row["alt"]]
-    keep = X[:, 0] != 4  # drop gap cols
+    ref, alt = tokens.copy(), tokens.copy()
+    ref[64], alt[64] = VOCAB[row["ref"]], VOCAB[row["alt"]]
+    keep = tokens != gap_token  # drop gap cols
     return ref[keep], alt[keep], keep
 
 
