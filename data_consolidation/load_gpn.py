@@ -29,8 +29,9 @@ def slice_window(row):
     if hasattr(msa, "encode"):
         tokens = msa.encode(X)
     else:
-        base = np.power(5, np.arange(X.shape[1]), dtype=object)
-        tokens = (X.astype(object) * base).sum(axis=1).astype(object)
+        base = np.power(5, np.arange(X.shape[1]), dtype=np.int64)
+        tokens = (X.astype(np.int64) * base).sum(axis=1)
+    tokens = np.asarray(tokens, dtype=np.int64)
 
     gap_token = getattr(msa, "gap_token", 4)
     if tokens[64] == gap_token:  # human gap at SNV
@@ -38,7 +39,7 @@ def slice_window(row):
     ref, alt = tokens.copy(), tokens.copy()
     ref[64], alt[64] = VOCAB[row["ref"]], VOCAB[row["alt"]]
     keep = tokens != gap_token  # drop gap cols
-    return ref[keep], alt[keep], keep
+    return ref[keep], alt[keep], keep.astype(np.int64)
 
 
 class TGMSA(td.Dataset):
