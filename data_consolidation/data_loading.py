@@ -193,6 +193,28 @@ def merge_varient_features(traitgym_df, annotation_df):
     )
     return merged_df
 
+def merge_traitgym_per_snp(traitgym_df, per_snp_df):
+    """Merge TraitGym data with per-SNP binaries on ``chrom`` and ``pos``."""
+
+    for df in (traitgym_df, per_snp_df):
+        df["chrom"] = df["chrom"].astype(str)
+        df["pos"] = df["pos"].astype(int)
+
+    before_traitgym_rows = len(traitgym_df)
+    before_per_snp_rows = len(per_snp_df)
+    merged_df = pd.merge(traitgym_df, per_snp_df, on=["chrom", "pos"], how="inner")
+
+    rows_after = len(merged_df)
+    traitgym_lost = before_traitgym_rows - rows_after
+    per_snp_lost = before_per_snp_rows - rows_after
+    logging.info(
+        "Merged per_snp features; lost %s / %s rows from traitgym_df and %s / %s rows from per_snp_df",
+        traitgym_lost,
+        before_traitgym_rows,
+        per_snp_lost,
+        before_per_snp_rows,
+    )
+    return merged_df
 
 def load_data(chromosome, include_graph=False, per_snp_df=None, *, use_per_snp=False):
     """
@@ -207,8 +229,10 @@ def load_data(chromosome, include_graph=False, per_snp_df=None, *, use_per_snp=F
     per_snp_df : pandas.DataFrame or None, optional
         Optional dataframe containing per-SNP binaries for this chromosome.
     use_per_snp : bool, optional
-        If ``True`` use only per-SNP binaries. When ``False`` use LD
-        annotations. Defaults to ``False``.
+        If ``True`` return only the per-SNP dataframe without merging to BIM
+        files. When ``False`` load LD annotations and merge with BIM. Defaults
+        to ``False``.
+
 
     Returns
     -------
@@ -224,24 +248,7 @@ def load_data(chromosome, include_graph=False, per_snp_df=None, *, use_per_snp=F
         if per_snp_df is None:
             raise ValueError("per_snp_df must be provided when use_per_snp is True")
 
-        # Prepare bim file columns for merging on chrom and pos
-        bim_file["chrom"] = bim_file["chrom"].astype(str)
-        bim_file["pos"] = bim_file["pos"].astype(int)
-
-        before_rows = len(per_snp_df)
-        merged_data = pd.merge(
-            per_snp_df,
-            bim_file,
-            on=["chrom", "pos"],
-            how="inner",
-        )
-        after_rows = len(merged_data)
-        logging.info(
-            "Merged per_snp and bim for chromosome %s; lost %s / %s rows",
-            chromosome,
-            before_rows - after_rows,
-            before_rows,
-        )
+        merged_data = per_snp_df.copy()
     else:
         ld_annotations = load_baselineLD_annotations(
             os.path.join(BASELINELD_PATH, f"baselineLD.{chromosome}.annot.gz")
@@ -313,7 +320,10 @@ def load_all_chromosomes(
         os.path.join(TRAITGYM_PATH, "complex_traits_all", "test.parquet"),
         split="test",
     )
-    combined_df = merge_varient_features(traitgym_data, combined_annotations)
+    if include_per_snp:
+        combined_df = merge_traitgym_per_snp(traitgym_data, combined_annotations)
+    else:
+        combined_df = merge_varient_features(traitgym_data, combined_annotations)
 
     convert_columns = {
         "chrom": int,
