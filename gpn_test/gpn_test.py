@@ -1,5 +1,5 @@
 import argparse, time, torch, numpy as np
-from transformers import AutoModel
+from gpn.model import GPNRoFormerModel
 from gpn.data import (
     GenomeMSA,
 )  # pip install "gpn @ git+https://github.com/songlab-cal/gpn.git"
@@ -13,12 +13,22 @@ def slice_window(msa, chrom, pos1, ref, alt):
     start = pos0 - 64
     end = pos0 + 64  # half-open
     X = msa.get_msa(chrom, start, end)  # (128, 90)
+    
+    # Convert byte strings to integer indices if needed
+    if X.dtype.kind == 'S':  # byte string
+        import numpy as np
+        X = np.vectorize(lambda b: VOCAB[b.decode("ascii").upper()])(X)
+    
     if X[64, 0] == 4:
         raise ValueError("human gap at SNV column")
     keep = X[:, 0] != 4  # drop gap columns
-    Xr, Xa = X.copy(), X.copy()
-    Xr[64, 0] = VOCAB[ref]
-    Xa[64, 0] = VOCAB[alt]
+    
+    # Use only human sequence (column 0) for simple tokenization
+    human_seq = X[:, 0]
+    Xr, Xa = human_seq.copy(), human_seq.copy()
+    Xr[64] = VOCAB[ref]
+    Xa[64] = VOCAB[alt]
+    
     return (
         torch.tensor(Xr[keep], dtype=torch.long),
         torch.tensor(Xa[keep], dtype=torch.long),
@@ -29,12 +39,11 @@ def slice_window(msa, chrom, pos1, ref, alt):
 def main(args):
     t0 = time.time()
     msa = GenomeMSA(args.msa)
-    print(f"✅  opened MSA store; 90 species = {len(msa.species)==90}")
     r, a, m = slice_window(msa, args.chrom, args.pos, args.ref, args.alt)
-    print(f"✅  sliced window: ref shape {tuple(r.shape)}, alt {tuple(a.shape)}")
+    print(f"sliced window: ref shape {tuple(r.shape)}, alt {tuple(a.shape)}")
 
-    enc = AutoModel.from_pretrained(
-        "songlab/gpn-msa-sapiens", add_pooling_layer=False
+    enc = GPNRoFormerModel.from_pretrained(
+        "songlab/gpn-msa-sapiens"
     ).to(args.device)
     enc.eval()
     torch.set_grad_enabled(False)
