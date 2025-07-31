@@ -1,3 +1,5 @@
+import logging
+
 import gpn.model
 import torch
 import torch.nn as nn
@@ -7,6 +9,9 @@ from sklearn.metrics import average_precision_score
 from torch.utils.data import DataLoader
 
 from data_consolidation.load_gpn import TGMSAFixed as TGMSA
+from utils import setup_logger
+
+setup_logger(None)  # Initialize logger
 
 # Load one of the four TraitGym configurations.
 # Pick the "_full" variant if you want the 9 × matched negatives.
@@ -25,23 +30,31 @@ val_loader = DataLoader(val, batch_size=32)
 # Debug: Test data loading
 ("Testing data loader...")
 test_batch = next(iter(train_loader))
-print(f"Sample batch:")
-print(f"  ref shape: {test_batch['ref'].shape}, dtype: {test_batch['ref'].dtype}")
-print(f"  alt shape: {test_batch['alt'].shape}, dtype: {test_batch['alt'].dtype}")
-print(f"  attn shape: {test_batch['attn'].shape}, dtype: {test_batch['attn'].dtype}")
-print(f"  label shape: {test_batch['label'].shape}, dtype: {test_batch['label'].dtype}")
-print(f"  ref sample values: {test_batch['ref'][0][:10]}")
-print(f"  alt sample values: {test_batch['alt'][0][:10]}")
-print(f"  ref range: [{test_batch['ref'].min()}, {test_batch['ref'].max()}]")
-print(f"  alt range: [{test_batch['alt'].min()}, {test_batch['alt'].max()}]")
+logging.info(f"Sample batch:")
+logging.info(
+    f"  ref shape: {test_batch['ref'].shape}, dtype: {test_batch['ref'].dtype}"
+)
+logging.info(
+    f"  alt shape: {test_batch['alt'].shape}, dtype: {test_batch['alt'].dtype}"
+)
+logging.info(
+    f"  attn shape: {test_batch['attn'].shape}, dtype: {test_batch['attn'].dtype}"
+)
+logging.info(
+    f"  label shape: {test_batch['label'].shape}, dtype: {test_batch['label'].dtype}"
+)
+logging.info(f"  ref sample values: {test_batch['ref'][0][:10]}")
+logging.info(f"  alt sample values: {test_batch['alt'][0][:10]}")
+logging.info(f"  ref range: [{test_batch['ref'].min()}, {test_batch['ref'].max()}]")
+logging.info(f"  alt range: [{test_batch['alt'].min()}, {test_batch['alt'].max()}]")
 
 enc = GPNRoFormerModel.from_pretrained("songlab/gpn-msa-sapiens")  # 86 M params
 
 # Debug: Print model configuration
-print(f"Model config:")
-print(f"  vocab_size: {enc.config.vocab_size}")
-print(f"  hidden_size: {enc.config.hidden_size}")
-print(
+logging.info(f"Model config:")
+logging.info(f"  vocab_size: {enc.config.vocab_size}")
+logging.info(f"  hidden_size: {enc.config.hidden_size}")
+logging.info(
     f"  max_position_embeddings: {getattr(enc.config, 'max_position_embeddings', 'N/A')}"
 )
 
@@ -88,22 +101,28 @@ for epoch in range(8):
         opt.zero_grad()
 
         # Debug: Check input tensor properties
-        print(f"Batch {batch_idx}:")
-        print(
+        logging.info(f"Batch {batch_idx}:")
+        logging.info(
             f"  ref shape: {batch['ref'].shape}, range: [{batch['ref'].min()}, {batch['ref'].max()}]"
         )
-        print(
+        logging.info(
             f"  alt shape: {batch['alt'].shape}, range: [{batch['alt'].min()}, {batch['alt'].max()}]"
         )
-        print(f"  attn shape: {batch['attn'].shape}, dtype: {batch['attn'].dtype}")
+        logging.info(
+            f"  attn shape: {batch['attn'].shape}, dtype: {batch['attn'].dtype}"
+        )
 
         # Check for invalid token indices
         if (
             batch["ref"].max() >= enc.config.vocab_size
             or batch["alt"].max() >= enc.config.vocab_size
         ):
-            print(f"WARNING: Token indices exceed vocab_size ({enc.config.vocab_size})")
-            print(f"  ref max: {batch['ref'].max()}, alt max: {batch['alt'].max()}")
+            logging.info(
+                f"WARNING: Token indices exceed vocab_size ({enc.config.vocab_size})"
+            )
+            logging.info(
+                f"  ref max: {batch['ref'].max()}, alt max: {batch['alt'].max()}"
+            )
 
         try:
             out = model(batch["ref"].cuda(), batch["alt"].cuda(), batch["attn"].cuda())
@@ -111,8 +130,8 @@ for epoch in range(8):
             loss.backward()
             opt.step()
         except RuntimeError as e:
-            print(f"CUDA error in batch {batch_idx}: {e}")
-            print(f"Skipping batch due to error...")
+            logging.error(f"CUDA error in batch {batch_idx}: {e}")
+            logging.error(f"Skipping batch due to error...")
             continue
     sched.step()
 
@@ -124,4 +143,4 @@ for epoch in range(8):
             preds.append(p.cpu())
             labels.append(b["label"])
     auprc = average_precision_score(torch.cat(labels), torch.cat(preds))
-    print(f"epoch {epoch}: LOCO-chr21 AUPRC = {auprc:.3f}")
+    logging.info(f"epoch {epoch}: LOCO-chr21 AUPRC = {auprc:.3f}")
