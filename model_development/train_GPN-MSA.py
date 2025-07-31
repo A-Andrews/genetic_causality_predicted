@@ -74,8 +74,26 @@ class SNPClassifier(nn.Module):
         )
 
     def forward(self, ref, alt, attn):
-        h_ref = self.encoder(ref, attention_mask=attn).last_hidden_state[:, 64, :]
-        h_alt = self.encoder(alt, attention_mask=attn).last_hidden_state[:, 64, :]
+        # RoFormerEncoder expects an "extended" attention mask of shape
+        # (batch, 1, 1, seq_len) with 0s for tokens to attend to and large
+        # negative values for positions that should be masked.  The
+        # `GPNRoFormerModel` wrapper does not internally expand the 2D mask
+        # that we construct in the data loader, which previously led to a
+        # broadcast error once the batch dimension differed from the sequence
+        # length (e.g. batch size 32 vs. sequence length 128).
+        #
+        # Expand the mask here using the helper provided by the underlying
+        # pretrained model so that it matches the expected shape.
+        extended_attn = self.encoder.get_extended_attention_mask(
+            attn, ref.shape, device=ref.device
+        )
+
+        h_ref = self.encoder(ref, attention_mask=extended_attn).last_hidden_state[
+            :, 64, :
+        ]
+        h_alt = self.encoder(alt, attention_mask=extended_attn).last_hidden_state[
+            :, 64, :
+        ]
         x = torch.cat([h_ref, h_alt - h_ref], dim=-1)
         return self.cls(x).squeeze(-1)
 
