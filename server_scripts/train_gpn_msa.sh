@@ -15,6 +15,6 @@ echo "Started at: "`date`
 echo "------------------------------------------------"
 module load Python/3.11.3-GCCcore-12.3.0
 source ".venv/bin/activate"
-python3 model_development/train_GPN-MSA.py
+python3 model_development/train_GPN-MSA.py "$@"
 
 echo "Done!"

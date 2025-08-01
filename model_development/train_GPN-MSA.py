@@ -1,3 +1,4 @@
+import argparse
 import logging
 
 import gpn.model
@@ -10,6 +11,15 @@ from torch.utils.data import DataLoader
 
 from data_consolidation.load_gpn import TGMSAFixed as TGMSA
 from utils import setup_logger
+
+parser = argparse.ArgumentParser(description="Train GPN-MSA classifier")
+parser.add_argument(
+    "--max-batches",
+    type=int,
+    default=None,
+    help="Limit the number of batches per epoch for faster experiments.",
+)
+args = parser.parse_args()
 
 setup_logger(None)  # Initialize logger
 
@@ -116,6 +126,8 @@ for epoch in range(8):
         for p in enc.encoder.layer[-4:].parameters():  # unfreeze top 4 layers
             p.requires_grad = True
     for batch_idx, batch in enumerate(train_loader):
+        if args.max_batches is not None and batch_idx >= args.max_batches:
+            break
         opt.zero_grad()
 
         # Debug: Check input tensor properties
@@ -157,8 +169,14 @@ for epoch in range(8):
     preds, labels = [], []
     with torch.no_grad():
         for b in val_loader:
-            p = torch.sigmoid(model(b["ref"].cuda(), b["alt"].cuda(), b["attn"].cuda()))
-            preds.append(p.cpu())
-            labels.append(b["label"])
-    auprc = average_precision_score(torch.cat(labels), torch.cat(preds))
-    logging.info(f"epoch {epoch}: LOCO-chr21 AUPRC = {auprc:.3f}")
+            for val_idx, b in enumerate(val_loader):
+                if args.max_batches is not None and val_idx >= args.max_batches:
+                    break
+                p = torch.sigmoid(
+                    model(b["ref"].cuda(), b["alt"].cuda(), b["attn"].cuda())
+                )
+                preds.append(p.cpu())
+                labels.append(b["label"])
+    if preds and labels:
+        auprc = average_precision_score(torch.cat(labels), torch.cat(preds))
+        logging.info(f"epoch {epoch}: LOCO-chr21 AUPRC = {auprc:.3f}")
