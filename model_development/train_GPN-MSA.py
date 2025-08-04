@@ -168,15 +168,12 @@ for epoch in range(8):
     model.eval()
     preds, labels = [], []
     with torch.no_grad():
-        for b in val_loader:
-            for val_idx, b in enumerate(val_loader):
-                if args.max_batches is not None and val_idx >= args.max_batches:
-                    break
-                p = torch.sigmoid(
-                    model(b["ref"].cuda(), b["alt"].cuda(), b["attn"].cuda())
-                )
-                preds.append(p.cpu())
-                labels.append(b["label"])
+        for val_idx, b in enumerate(val_loader):
+            if args.max_batches is not None and val_idx >= args.max_batches:
+                break
+            p = torch.sigmoid(model(b["ref"].cuda(), b["alt"].cuda(), b["attn"].cuda()))
+            preds.append(p.cpu())
+            labels.append(b["label"])
     if preds and labels:
         auprc = average_precision_score(torch.cat(labels), torch.cat(preds))
         logging.info(f"epoch {epoch}: LOCO-chr21 AUPRC = {auprc:.3f}")
