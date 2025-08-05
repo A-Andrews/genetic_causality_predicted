@@ -61,11 +61,10 @@ label_cache_path = os.path.join("data_consolidation", "train_labels.pt")
 try:
     labels = torch.load(label_cache_path)
 except FileNotFoundError:
-    labels = []
-    for i in range(len(train)):
-        labels.append(train[i]["label"].item())
-    labels = torch.tensor(labels)
+    labels = torch.tensor(train.ds["label"])
     torch.save(labels, label_cache_path)
+
+logging.info(f"Loaded {len(labels)} labels from {label_cache_path}")
 
 # Step 2: Compute class counts and weights
 n_pos = (labels == 1).sum().item()
