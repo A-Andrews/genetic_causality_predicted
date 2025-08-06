@@ -6,6 +6,7 @@ logs
 graphs
 variant_collection
 catboost_info
+papers
 
 # C extensions
 *.so
