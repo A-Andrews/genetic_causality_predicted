@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import shap
 
-from graphing.graph_utils import BAR_COLOURS, EDGE_COLOUR
+from settings import BAR_COLOURS, EDGE_COLOUR
 
 plt.rcParams.update(
     {
