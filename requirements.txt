@@ -22,9 +22,9 @@ filelock==3.18.0
 fonttools==4.58.4
 frozenlist==1.7.0
 fsspec==2025.3.0
--e git+https://github.com/A-Andrews/genetic_causality_predicted.git@d49e284b1481262f541a9c31e354d75f117ec77b#egg=genetic_causality_predicted
 gitdb==4.0.12
 GitPython==3.1.45
+gpn==0.6
 graphviz==0.21
 hf-xet==1.1.5
 huggingface-hub==0.34.2
@@ -92,7 +92,7 @@ tokenizers==0.21.2
 torch==2.7.1
 torchinfo==1.8.0
 tqdm==4.67.1
-transformers==4.54.0
+transformers @ git+https://github.com/huggingface/transformers.git@01d5f94695aac6b72f83225a16b69cf979e86df7
 triton==3.3.1
 typing-inspection==0.4.1
 typing_extensions==4.14.0

@@ -1,9 +1,10 @@
 import logging
 
 import pandas as pd
-from load_baseline_annotations import load_baseline_annotations
-from load_graph_annotations import load_graph_annotations
-from load_traitgym import load_traitgym_data
+
+from data.load_baseline_annotations import load_baseline_annotations
+from data.load_graph_annotations import load_graph_annotations
+from data.load_traitgym import load_traitgym_data
 
 
 def merge_graph_annotations(graph_df, df):

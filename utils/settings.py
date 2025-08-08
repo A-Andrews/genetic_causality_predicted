@@ -20,7 +20,7 @@ TRAITGYM_PATH = os.path.join(
     "TraitGym",
     "results",
     "dataset",
-    "complex_traits",
+    "complex_traits_matched_9",
     "test.parquet",
 )
 GRAPH_ANNOTATIONS_PATH = os.path.join(
@@ -46,3 +46,19 @@ ZARR_PATH = os.path.join(
 
 BAR_COLOURS = ["#FE615A", "#B9D6F2", "#A0AF84"]
 EDGE_COLOUR = "#D9D8D6"
+
+LEAKY_COLS = [
+    "chrom",
+    "pos",
+    "ref",
+    "alt",
+    "SNP",
+    "trait",
+    "CHR",
+    "BP",
+    "CM",
+    "genetic_dist",
+    "variant_id",
+    "label",
+    "pip",
+]

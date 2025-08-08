@@ -7,6 +7,8 @@ graphs
 variant_collection
 catboost_info
 papers
+data_consolidation/cv_labels/
+data_consolidation/train_labels.pt
 
 # C extensions
 *.so
