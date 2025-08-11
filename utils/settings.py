@@ -44,6 +44,16 @@ ZARR_PATH = os.path.join(
     "89.zarr",
 )
 
+SAVE_RESULTS_PATH = os.path.join(
+    "/well",
+    "palamara",
+    "users",
+    "nrw600",
+    "contribution_prediction",
+    "genetic_causality_predicted",
+    "results",
+)
+
 BAR_COLOURS = ["#FE615A", "#B9D6F2", "#A0AF84"]
 EDGE_COLOUR = "#D9D8D6"
 
@@ -61,4 +71,5 @@ LEAKY_COLS = [
     "variant_id",
     "label",
     "pip",
+    "match_group",
 ]

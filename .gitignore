@@ -9,6 +9,7 @@ catboost_info
 papers
 data_consolidation/cv_labels/
 data_consolidation/train_labels.pt
+results
 
 # C extensions
 *.so

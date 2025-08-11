@@ -11,9 +11,12 @@ from datasets import load_dataset
 from gpn.model import GPNRoFormerModel
 from sklearn.metrics import average_precision_score
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from datetime import datetime
+
 
 from data.load_gpn_data import TGMSAFixed as TGMSA
-from utils.data_saving import setup_logger
+from utils.data_saving import setup_logger, save_args, save_performance_metrics
+from datetime import datetime
 
 warnings.filterwarnings(
     "ignore",
@@ -30,6 +33,12 @@ parser.add_argument(
 args = parser.parse_args()
 
 setup_logger(None)  # Initialize logger
+
+MODEL_NAME = "gpn-msa-classifier"  # or any name you want
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+# Save CLI arguments (now robust to argparse.Namespace)
+save_args(args, MODEL_NAME, TIMESTAMP)
 
 # Deterministic behaviour helps debug training issues
 SEED = 42
@@ -61,6 +70,7 @@ logging.info(f"Using chromosomes for CV: {chromosomes}")
 # List to store AUPRC results for each fold
 auprc_scores = []
 n_epochs = 8
+per_fold = []
 
 # Loop through each chromosome to use as the validation set
 for test_chrom in chromosomes:
@@ -75,6 +85,13 @@ for test_chrom in chromosomes:
 
     train = TGMSA(train_data)
     val = TGMSA(val_data)
+
+    n_val = len(val)
+    n_val_pos = int(np.sum(val.ds["label"]))
+    n_val_neg = n_val - n_val_pos
+    logging.info(
+        f"LOCO fold chr{test_chrom}: val size={n_val} (pos={n_val_pos}, neg={n_val_neg})"
+    )
 
     logging.info(f"Training set size: {len(train)}, Validation set size: {len(val)}")
 
@@ -111,7 +128,7 @@ for test_chrom in chromosomes:
     )
 
     # Step 4: Build the DataLoader with the sampler (not shuffle!)
-    train_loader = DataLoader(train, batch_size=32, sampler=sampler, drop_last=True)
+    train_loader = DataLoader(train, batch_size=32, sampler=sampler, drop_last=False)
     val_loader = DataLoader(val, batch_size=32)
 
     logging.info(
@@ -197,13 +214,69 @@ for test_chrom in chromosomes:
         preds_t = torch.cat(preds)
         labels_t = torch.cat(labels)
         fold_auprc = average_precision_score(labels_t.numpy(), preds_t.numpy())
-        logging.info(f"LOCO-chr{test_chrom} AUPRC = {fold_auprc:.3f}")
-        auprc_scores.append(fold_auprc)
+        logging.info(f"LOCO-chr{test_chrom} AUPRC = {fold_auprc:.3f} (n_val={n_val})")
+        per_fold.append((test_chrom, float(fold_auprc), int(n_val)))
+
 
 # Calculate and print the final average AUPRC
-mean_auprc = np.mean(auprc_scores)
-std_auprc = np.std(auprc_scores)
-logging.info("=" * 50)
-logging.info(f"Cross-Validation Complete.")
-logging.info(f"Average LOCO AUPRC: {mean_auprc:.3f} ± {std_auprc:.3f}")
-logging.info("=" * 50)
+if not per_fold:
+    logging.warning("No per-fold results gathered; cannot compute LOCO.")
+else:
+    chrs = [c for c, _, _ in per_fold]
+    scores = np.array([s for _, s, _ in per_fold], dtype=float)
+    weights = np.array(
+        [n for _, _, n in per_fold], dtype=float
+    )  # number of val examples per chr
+
+    # Size-weighted mean AUPRC (TraitGym-style)
+    weighted_mean = np.average(scores, weights=weights)
+
+    # Optional: chromosome-level bootstrap SE of the weighted mean
+    def bootstrap_weighted_mean(scores, weights, iters=2000, seed=42):
+        rng = np.random.default_rng(seed)
+        k = len(scores)
+        boots = np.empty(iters, dtype=float)
+        for b in range(iters):
+            idx = rng.integers(0, k, size=k, endpoint=False)  # resample chromosomes
+            boots[b] = np.average(scores[idx], weights=weights[idx])
+        return boots.std(ddof=1)
+
+    weighted_se = bootstrap_weighted_mean(scores, weights, iters=2000)
+
+    # Also log the plain (unweighted) mean for reference
+    unweighted_mean = scores.mean()
+    unweighted_std = scores.std(ddof=1)
+
+    logging.info("=" * 50)
+    logging.info("Cross-Validation Complete.")
+    logging.info(
+        "Per-chrom AUPRC: "
+        + ", ".join([f"chr{c}:{s:.3f}(n={n})" for (c, s, n) in per_fold])
+    )
+    logging.info(
+        f"LOCO AUPRC (size-weighted): {weighted_mean:.3f} ± {weighted_se:.3f} (bootstrap SE)"
+    )
+    logging.info(
+        f"LOCO AUPRC (unweighted):    {unweighted_mean:.3f} ± {unweighted_std:.3f} (SD)"
+    )
+    logging.info("=" * 50)
+
+    performance_metrics = {
+            "per_chrom": [
+                {"chrom": str(c), "auprc": float(s), "n_val": int(n)}
+                for (c,s,n) in per_fold
+            ],
+            "summary": {
+                "weighted_mean_auprc": float(weighted_mean),
+                "weighted_se": float(weighted_se),
+                "unweighted_mean_auprc": float(unweighted_mean),
+                "unweighted_sd": float(unweighted_sd),
+                "n_total_val": int(weights.sum()),
+                "n_chromosomes": int(len(per_fold)),
+                # "imbalance_strategy": IMBALANCE_STRATEGY,  # uncomment if you set it
+                "epochs": int(n_epochs),
+                "max_batches": args.max_batches,
+            },
+        }
+
+        save_performance_metrics(performance_metrics, MODEL_NAME, TIMESTAMP)

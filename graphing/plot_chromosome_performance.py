@@ -7,9 +7,8 @@ import pandas as pd
 
 from utils.settings import BAR_COLOURS, EDGE_COLOUR
 
-
 def plot_chromosome_performance(
-    chrom_metrics: pd.Series | pd.DataFrame,
+    auprcs: pd.Series
     model_name: str,
     params: Dict,
     timestamp: str,
@@ -21,18 +20,13 @@ def plot_chromosome_performance(
     out_dir = os.path.join(folder, "per_chromosome_performances", model_name, timestamp)
     os.makedirs(out_dir, exist_ok=True)
 
-    if isinstance(chrom_metrics, pd.DataFrame):
-        values = chrom_metrics[metric]
-    else:
-        values = chrom_metrics
-
     fig, ax = plt.subplots(figsize=(8, 4))
     yerr = None
     if errors is not None:
-        yerr = errors.reindex(values.index).fillna(0).values
+        yerr = errors.reindex(auprcs.index).fillna(0).values
     ax.bar(
-        values.index.astype(str),
-        values.values,
+        auprcs.index.astype(str),
+        auprcs.values,
         yerr=yerr,
         color=BAR_COLOURS[0],
         edgecolor="none",
@@ -48,7 +42,7 @@ def plot_chromosome_performance(
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
 
-    values_df = values.to_frame(metric)
+    values_df = auprcs.to_frame(metric)
     if errors is not None:
         values_df["variance"] = errors.reindex(values.index)
     values_df.to_csv(os.path.join(out_dir, f"chromosome_{metric}.csv"))

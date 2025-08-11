@@ -1,17 +1,22 @@
 import argparse
 import logging
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 from sklearn.metrics import average_precision_score
+from xgboost import XGBClassifier
 
 from data.load_and_merge_data import load_all_chromosomes
 from data.prepare_data import prepare_data
-from utils.data_saving import setup_logger
+from utils.data_saving import save_args, save_performance_metrics, setup_logger
+
+warnings.filterwarnings(
+    "ignore", message="Sparse arrays from pandas are converted into dense."
+)
 
 
 @dataclass
@@ -59,7 +64,7 @@ def chromosome_holdout_cv(
             X_train, y_train = X[train_mask], y[train_mask]
             X_val, y_val = X[~train_mask], y[~train_mask]
 
-            model = xgb.XGBClassifier(
+            model = XGBClassifier(
                 eval_metric="logloss",
                 enable_categorical=True,
                 base_score=0.5,
@@ -72,7 +77,6 @@ def chromosome_holdout_cv(
 
             model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
 
-            # XGBoost can handle DataFrames directly while TabNet requires ndarrays
             y_pred = model.predict_proba(X_val)[:, 1]
 
             auprc = average_precision_score(y_val, y_pred)
@@ -86,7 +90,7 @@ def chromosome_holdout_cv(
             fi_list.append(fi)
 
             logging.info(
-                "Run %d, Chromosome %s - AUPRC: %.3f | ROC-AUC: %.3f | Positives: %d",
+                "Run %d, Chromosome %s - AUPRC: %.3f | Positives: %d",
                 run + 1,
                 chrom,
                 auprc,
@@ -107,10 +111,14 @@ def chromosome_holdout_cv(
 
     metrics_df = pd.DataFrame(run_auprcs)
     logging.info(
+        "Cross-validation AUPRC scores:\n%s",
+        metrics_df.to_string(),
+    )
+    logging.info(
         "Mean CV AUPRC over %d runs: %.3f +/- %.3f",
         n_runs,
-        metrics_df["auprc"].mean(),
-        metrics_df["auprc"].std() / np.sqrt(n_runs),
+        metrics_df.mean(),
+        metrics_df.std() / np.sqrt(n_runs),
     )
     fi_df = pd.concat(fi_runs, axis=1)
     chrom_mean = None
@@ -138,13 +146,15 @@ def main() -> None:
     setup_logger(seed=args.random_state)
     logging.info("Training arguments: %s", args)
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    save_args(args, "XGBoost", timestamp)
+
     data = load_all_chromosomes(
         include_graph=args.use_graph_annotations,
     )
 
     X, y = prepare_data(data)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     auprc_df, fi_df, chrom_mean, chrom_err = chromosome_holdout_cv(
         data,
@@ -153,40 +163,18 @@ def main() -> None:
         args,
     )
 
-    # (
-    #     cv_metrics,
-    #     fi_df,
-    #     chrom_mean,
-    #     chrom_err,
-    #     _,
-    #     perm_df,
-    #     perm_err_df,
-    # ) = chromosome_holdout_cv(
-    #     data,
-    #     X,
-    #     y,
-    #     build_model,
-    #     n_runs=args.n_runs,
-    #     random_state=args.random_state,
-    #     collect_importance=True,
-    #     compute_shap=args.compute_shap,
-    #     compute_permutation=args.compute_permutation,
-    #     return_chrom_metrics=True,
-    #     bootstrap=args.bootstrap,
-    #     bootstrap_samples=args.bootstrap_samples,
-    #     neg_frac=args.neg_frac,
-    # )
-    # plot_cv_results(
-    #     cv_metrics,
-    #     fi_df,
-    #     chrom_mean,
-    #     chrom_err,
-    #     perm_df,
-    #     perm_err_df,
-    #     args,
-    #     "XGBoost",
-    #     timestamp,
-    # )
+    performance_metrics = {
+        "auprc": auprc_df.to_dict(orient="index"),
+        "feature_importances": fi_df.to_dict(orient="index"),
+        "chrom_mean": chrom_mean.to_dict(),
+        "chrom_err": chrom_err.to_dict(),
+    }
+
+    save_performance_metrics(
+        performance_metrics,
+        "XGBoost",
+        timestamp,
+    )
 
 
 if __name__ == "__main__":
