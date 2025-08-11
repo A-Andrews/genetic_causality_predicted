@@ -24,7 +24,7 @@ frozenlist==1.7.0
 fsspec==2025.3.0
 gitdb==4.0.12
 GitPython==3.1.45
-gpn==0.6
+# gpn==0.6
 graphviz==0.21
 hf-xet==1.1.5
 huggingface-hub==0.34.2
