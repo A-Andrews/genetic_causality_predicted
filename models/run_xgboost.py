@@ -164,10 +164,12 @@ def main() -> None:
     )
 
     performance_metrics = {
-        "auprc": auprc_df.to_dict(orient="index"),
-        "feature_importances": fi_df.to_dict(orient="index"),
-        "chrom_mean": chrom_mean.to_dict(),
-        "chrom_err": chrom_err.to_dict(),
+        "auprc": auprc_df.rename(index=str).to_dict(orient="index"),
+        "feature_importances": fi_df.rename(index=str, columns=str).to_dict(
+            orient="index"
+        ),
+        "chrom_mean": chrom_mean.rename(index=str, columns=str).to_dict(),
+        "chrom_err": chrom_err.rename(index=str, columns=str).to_dict(),
     }
 
     save_performance_metrics(

@@ -3,6 +3,8 @@ import logging
 import os
 import random
 import warnings
+from dataclasses import dataclass
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -11,26 +13,35 @@ from datasets import load_dataset
 from gpn.model import GPNRoFormerModel
 from sklearn.metrics import average_precision_score
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from datetime import datetime
-
 
 from data.load_gpn_data import TGMSAFixed as TGMSA
-from utils.data_saving import setup_logger, save_args, save_performance_metrics
-from datetime import datetime
+from utils.data_saving import save_args, save_performance_metrics, setup_logger
 
 warnings.filterwarnings(
     "ignore",
     message="Object at .snakemake_timestamp is not recognized as a component of a Zarr hierarchy.",
 )
 
-parser = argparse.ArgumentParser(description="Train GPN-MSA classifier")
-parser.add_argument(
-    "--max-batches",
-    type=int,
-    default=None,
-    help="Limit the number of batches per epoch for faster experiments.",
-)
-args = parser.parse_args()
+
+@dataclass
+class TrainArgs:
+    """Command line arguments for training."""
+
+    max_batches: int | None = None
+
+
+def parse_args() -> TrainArgs:
+    parser = argparse.ArgumentParser(description="Train GPN-MSA classifier")
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=None,
+        help="Limit the number of batches per epoch for faster experiments.",
+    )
+    return TrainArgs(**vars(parser.parse_args()))
+
+
+args = parse_args()
 
 setup_logger(None)  # Initialize logger
 
@@ -262,21 +273,21 @@ else:
     logging.info("=" * 50)
 
     performance_metrics = {
-            "per_chrom": [
-                {"chrom": str(c), "auprc": float(s), "n_val": int(n)}
-                for (c,s,n) in per_fold
-            ],
-            "summary": {
-                "weighted_mean_auprc": float(weighted_mean),
-                "weighted_se": float(weighted_se),
-                "unweighted_mean_auprc": float(unweighted_mean),
-                "unweighted_sd": float(unweighted_sd),
-                "n_total_val": int(weights.sum()),
-                "n_chromosomes": int(len(per_fold)),
-                # "imbalance_strategy": IMBALANCE_STRATEGY,  # uncomment if you set it
-                "epochs": int(n_epochs),
-                "max_batches": args.max_batches,
-            },
-        }
+        "per_chrom": [
+            {"chrom": str(c), "auprc": float(s), "n_val": int(n)}
+            for (c, s, n) in per_fold
+        ],
+        "summary": {
+            "weighted_mean_auprc": float(weighted_mean),
+            "weighted_se": float(weighted_se),
+            "unweighted_mean_auprc": float(unweighted_mean),
+            "unweighted_sd": float(unweighted_std),
+            "n_total_val": int(weights.sum()),
+            "n_chromosomes": int(len(per_fold)),
+            # "imbalance_strategy": IMBALANCE_STRATEGY,  # uncomment if you set it
+            "epochs": int(n_epochs),
+            "max_batches": args.max_batches,
+        },
+    }
 
-        save_performance_metrics(performance_metrics, MODEL_NAME, TIMESTAMP)
+    save_performance_metrics(performance_metrics, MODEL_NAME, TIMESTAMP)
